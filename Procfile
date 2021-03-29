@@ -1,1 +1,1 @@
-web: ./target/release/spider-bot
+worker: ./target/release/spider-bot
