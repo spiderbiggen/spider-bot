@@ -32,7 +32,7 @@ use tokio::time::Instant;
 
 use commands::{
     dice::*,
-    night::*
+    gifs::*
 };
 use kitsu::api::anime as anime_api;
 use models::Subscription;

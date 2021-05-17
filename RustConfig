@@ -1,1 +1,2 @@
+DIESEL_FLAGS="--force --no-default-features --features postgres"
 RUST_INSTALL_DIESEL=1

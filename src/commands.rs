@@ -1,2 +1,2 @@
 pub mod dice;
-pub mod night;
+pub mod gifs;
