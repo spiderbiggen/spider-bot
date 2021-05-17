@@ -10,8 +10,7 @@ use rand::seq::SliceRandom;
 pub async fn night(ctx: &Context, msg: &Message) -> CommandResult {
     let token = env::var("GIPHY_TOKEN")?;
     let client = Client::new(token);
-    let result = client.search("good night").await.unwrap();
-    let single = result.choose(&mut rand::thread_rng()).unwrap();
+    let single = client.random("good night").await.unwrap();
     msg.reply(ctx, single.embed_url.as_str()).await?;
     Ok(())
 }

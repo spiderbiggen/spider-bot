@@ -1,10 +1,10 @@
 #[derive(Deserialize, Debug)]
-pub struct Results<T> {
-    pub data: Vec<T>,
+pub struct Response<T> {
+    pub data: T,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct SearchResult {
+pub struct Gif {
     pub id: String,
     pub url: String,
     pub title: String,

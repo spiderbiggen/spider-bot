@@ -23,13 +23,25 @@ impl Client {
         }
     }
 
-    pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>, Box<dyn Error>> {
+    pub async fn search(&self, query: &str) -> Result<Vec<Gif>, Box<dyn Error>> {
         let url = Url::parse_with_params(
             "https://api.giphy.com/v1/gifs/search?limit=25&offset=0&rating=g&lang=en",
             &[("api_key", self.api_key.as_str()), ("q", query)],
         )?;
 
-        let result: Results<SearchResult> = self.reqwest.get(url)
+        let result: Response<Vec<Gif>> = self.reqwest.get(url)
+            .send().await?
+            .json().await?;
+        return Ok(result.data);
+    }
+
+    pub async fn random(&self, tag: &str) -> Result<Gif, Box<dyn Error>> {
+        let url = Url::parse_with_params(
+            "https://api.giphy.com/v1/gifs/random?rating=g",
+            &[("api_key", self.api_key.as_str()), ("tag", tag)],
+        )?;
+
+        let result: Response<Gif> = self.reqwest.get(url)
             .send().await?
             .json().await?;
         return Ok(result.data);
