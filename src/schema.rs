@@ -13,6 +13,15 @@ table! {
 }
 
 table! {
+    anime_images (anime_id, image_type, size) {
+        anime_id -> Int4,
+        image_type -> Varchar,
+        size -> Text,
+        url -> Nullable<Varchar>,
+    }
+}
+
+table! {
     anime_titles (anime_id, language) {
         anime_id -> Int4,
         language -> Varchar,
@@ -20,9 +29,11 @@ table! {
     }
 }
 
+joinable!(anime_images -> anime (anime_id));
 joinable!(anime_titles -> anime (anime_id));
 
 allow_tables_to_appear_in_same_query!(
     anime,
+    anime_images,
     anime_titles,
 );

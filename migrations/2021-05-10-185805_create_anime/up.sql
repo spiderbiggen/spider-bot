@@ -24,6 +24,12 @@ CREATE TABLE anime_titles
 
 
 -- Create Anime Images table
-CREATE TABLE anime_images(
-
+CREATE TABLE anime_images
+(
+    anime_id   INT,
+    image_type VARCHAR(8),
+    size       TEXT,
+    url        VARCHAR(1024),
+    PRIMARY KEY (anime_id, image_type, size),
+    FOREIGN KEY (anime_id) REFERENCES anime (id) ON DELETE CASCADE ON UPDATE CASCADE
 );
