@@ -1,1 +1,6 @@
+\.env
+
 /target
+\.idea
+*.iml
+

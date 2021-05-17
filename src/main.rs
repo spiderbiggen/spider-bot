@@ -1,12 +1,18 @@
 #[macro_use]
+extern crate diesel;
+extern crate dotenv;
+#[macro_use]
 extern crate lazy_static;
 
-use std::collections::{HashMap, HashSet};
 use std::env;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{Duration, Utc};
+use diesel::pg::PgConnection;
+use diesel::prelude::*;
+use dotenv::dotenv;
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
 use serenity::framework::standard::{
@@ -26,18 +32,28 @@ use tokio::time::Instant;
 
 use commands::{
     dice::*,
+    night::*
 };
+use kitsu::api::anime as anime_api;
+use models::Subscription;
+use nyaa::Anime;
+use crate::anime::AnimeGroup;
 
-use crate::nyaa::Anime;
-
-mod nyaa;
+pub mod schema;
+pub mod models;
+mod anime;
 mod commands;
 
 lazy_static! {
     static ref BOT_ID: UserId = UserId(env::var("BOT_ID").map(|a| a.parse::<u64>().expect("BOT_ID was not a number")).expect("BOT_ID was not set or not a number"));
 }
 
-
+pub fn establish_connection() -> PgConnection {
+    let database_url = env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+    PgConnection::establish(&database_url)
+        .expect(&format!("Error connecting to {}", database_url))
+}
 
 #[help]
 #[individual_command_tip =
@@ -61,8 +77,7 @@ async fn my_help(
 }
 
 #[group]
-#[commands(ping)]
-#[commands(roll)]
+#[commands(ping, roll, night)]
 struct General;
 
 struct Handler {
@@ -104,7 +119,7 @@ impl EventHandler for Handler {
 #[tokio::main]
 async fn main() {
     let framework = StandardFramework::new()
-        .configure(|c| c.prefix("/").on_mention(Some(*BOT_ID)).no_dm_prefix(true)) // set the bot's prefix to "~"
+        .configure(|c| c.prefix("/").on_mention(Some(*BOT_ID)).no_dm_prefix(true)) // set the bot's prefix to "/"
         .group(&GENERAL_GROUP)
         .help(&MY_HELP);
 
@@ -125,11 +140,6 @@ async fn main() {
     }
 }
 
-#[derive(PartialEq, Hash, Debug)]
-struct AnimeGroup { title: String, episode: Option<i32> }
-
-impl Eq for AnimeGroup {}
-
 async fn periodic_fetch(context: Arc<Context>, guilds: Arc<Vec<GuildId>>) {
     let mut last = Instant::now().checked_sub(std::time::Duration::from_secs(1800)).unwrap_or(Instant::now());
     // let mut last = Instant::now().checked_sub(std::time::Duration::from_secs(3600)).unwrap_or(Instant::now());
@@ -137,16 +147,8 @@ async fn periodic_fetch(context: Arc<Context>, guilds: Arc<Vec<GuildId>>) {
     loop {
         let now = interval_day.tick().await;
         let prev_time = Utc::now().checked_sub_signed(Duration::from_std(now.duration_since(last)).unwrap()).unwrap();
-        let anime: Vec<Anime> = nyaa::get_anime().await;
-        let current: Vec<Anime> = anime.into_iter().filter(|item| item.pub_date > prev_time).collect();
-        println!("{:?}", current);
-        let mut groups: HashMap<AnimeGroup, Vec<Anime>> = HashMap::new();
-        current.into_iter().for_each(|anime| {
-            let key = AnimeGroup { title: anime.title.clone(), episode: anime.episode };
-            let group = groups.entry(key).or_insert(vec![]);
-            group.push(anime);
-        });
 
+        let groups = anime::update_from_nyaa(prev_time).await;
         let subscriptions = get_subscriptions_for_channel().await;
         for (group, anime) in groups {
             for guild in guilds.iter() {

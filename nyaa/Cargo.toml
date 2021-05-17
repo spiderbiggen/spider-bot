@@ -1,0 +1,16 @@
+[package]
+name = "nyaa"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "^0.4"
+futures = "^0.3.*"
+lazy_static = "^1.4.0"
+regex = "^1.4.3"
+reqwest = { version = "^0.11", features = ["json"] }
+rss = "^1.0"
+tokio = { version = "^1.4.0", features = ["macros", "rt-multi-thread"] }
+url = "^2.2.0"
