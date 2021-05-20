@@ -10,6 +10,7 @@ edition = "2018"
 kitsu = { path = "kitsu" }
 nyaa = { path = "nyaa" }
 giphy = { path = "giphy" }
+tenor = { path = "tenor" }
 chrono = "^0.4"
 diesel = { version = "^1.4.6", features = ["chrono", "postgres"] }
 dotenv = "^0.15.0"
@@ -24,4 +25,5 @@ members = [
     "giphy",
     "kitsu",
     "nyaa",
+    "tenor",
 ]

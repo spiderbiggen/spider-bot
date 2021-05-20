@@ -77,7 +77,7 @@ async fn my_help(
 }
 
 #[group]
-#[commands(ping, roll, night)]
+#[commands(ping, roll, night, night2, sleep, sleep2)]
 struct General;
 
 struct Handler {
@@ -118,6 +118,34 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
+    // dotenv().ok();
+    // use self::schema::subscriptions::dsl::*;
+    //
+    //
+    //
+    // let connection = establish_connection();
+    // let results = subscriptions
+    //     .filter(title.eq("Kumo desu ga, Nani ka"))
+    //     .limit(5)
+    //     .load::<Subscription>(&connection)
+    //     .expect("Error loading subscriptions");
+    //
+    // println!("Displaying {} subscriptions", results.len());
+    // for subscription in results {
+    //     println!("{}", subscription.title);
+    //     println!("----------");
+    //     println!("Guild: {}", subscription.guild_id);
+    //     println!("Channel: {}", subscription.channel_id);
+    // }
+
+    // let ani = anime_api::get_resource(1).await;
+    // let anis = anime_api::get_collection().await;
+
+    // println!("{:?}", ani);
+    // println!("==================================================");
+    // anis.unwrap().iter().for_each(|a| println!("{:?}\n", a));
+    // process::exit(0);
+
     let framework = StandardFramework::new()
         .configure(|c| c.prefix("/").on_mention(Some(*BOT_ID)).no_dm_prefix(true)) // set the bot's prefix to "/"
         .group(&GENERAL_GROUP)
@@ -150,6 +178,8 @@ async fn periodic_fetch(context: Arc<Context>, guilds: Arc<Vec<GuildId>>) {
 
         let groups = anime::update_from_nyaa(prev_time).await;
         let subscriptions = get_subscriptions_for_channel().await;
+        // groups.into_iter().flat_map(|(group, anime_vec)| anime_vec.iter().map(|anime| (&group, anime)))
+        //     .map(|a|)
         for (group, anime) in groups {
             for guild in guilds.iter() {
                 if let Some(sub) = subscriptions.get(guild) {
