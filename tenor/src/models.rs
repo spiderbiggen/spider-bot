@@ -12,7 +12,7 @@ pub struct Gif {
     pub title: String,
 }
 
-#[derive(Debug, PartialEq, EnumString, IntoStaticStr)]
+#[derive(Debug, Copy, Clone, PartialEq, EnumString, IntoStaticStr)]
 pub enum ContentFilter {
     #[strum(serialize = "high")]
     High,
@@ -24,7 +24,7 @@ pub enum ContentFilter {
     Off,
 }
 
-#[derive(Debug, PartialEq, EnumString, IntoStaticStr)]
+#[derive(Debug, Copy, Clone, PartialEq, EnumString, IntoStaticStr)]
 pub enum MediaFilter {
     #[strum(serialize = "basic")]
     Basic,

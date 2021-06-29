@@ -122,7 +122,7 @@ pub mod api {
     use reqwest;
     use url::Url;
 
-    use crate::{Error, Result};
+    use crate::Result;
 
     use super::models::ParseJsonApi;
 
@@ -157,7 +157,7 @@ pub mod api {
         use jsonapi::query::{PageParams, Query};
         use url::Url;
 
-        use crate::{api, models, Error, Result};
+        use crate::{api, models, Result};
 
         pub async fn get_resource(id: u64) -> Result<models::Anime> {
             let url_string = format!("https://kitsu.io/api/edge/anime/{}", id);

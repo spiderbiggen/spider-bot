@@ -13,13 +13,15 @@ pub mod models;
 pub struct Client {
     pub api_key: String,
     pub reqwest: ReqClient,
+    pub content_filter: ContentFilter,
 }
 
 impl Client {
-    pub fn new(api_key: String) -> Client {
+    pub fn new<S: Into<String>>(api_key: S, content_filter: Option<ContentFilter>) -> Client {
         Client {
-            api_key,
+            api_key: api_key.into(),
             reqwest: ReqClient::new(),
+            content_filter: content_filter.unwrap_or(ContentFilter::High),
         }
     }
 
@@ -30,7 +32,7 @@ impl Client {
                 ("key", self.api_key.as_str()),
                 ("q", query),
                 ("locale", "en"),
-                ("contentfilter", ContentFilter::High.into()),
+                ("contentfilter", self.content_filter.into()),
                 ("media_filter", MediaFilter::Minimal.into()),
             ],
         )?;
@@ -46,7 +48,7 @@ impl Client {
                 ("key", self.api_key.as_str()),
                 ("q", query),
                 ("locale", "en"),
-                ("contentfilter", ContentFilter::High.into()),
+                ("contentfilter", self.content_filter.into()),
                 ("media_filter", MediaFilter::Minimal.into()),
                 ("limit", "50"),
             ],
