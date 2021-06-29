@@ -21,7 +21,6 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-
 pub mod models {
     use chrono::{DateTime, Utc};
     use jsonapi::api::*;
@@ -29,11 +28,12 @@ pub mod models {
 
     use crate::{Error, Result};
 
-
     pub trait ParseJsonApi: JsonApiModel {
         fn from_document(document: JsonApiDocument) -> Result<Self> {
             match document {
-                JsonApiDocument::Data(doc) => Self::from_jsonapi_document(&doc).map_err(|err| Error::Parse(err)),
+                JsonApiDocument::Data(doc) => {
+                    Self::from_jsonapi_document(&doc).map_err(|err| Error::Parse(err))
+                }
                 JsonApiDocument::Error(err) => Err(Error::Api(err).into()),
             }
         }
@@ -181,7 +181,8 @@ pub mod api {
                 filter: Some(map),
                 fields: None,
                 include: None,
-            }.to_params();
+            }
+            .to_params();
             url.set_query(Some(&query));
             let anime = api::get_resources::<models::Anime>(url).await?;
             return Ok(anime);

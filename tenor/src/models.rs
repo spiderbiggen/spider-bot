@@ -31,4 +31,3 @@ pub enum MediaFilter {
     #[strum(serialize = "minimal")]
     Minimal,
 }
-

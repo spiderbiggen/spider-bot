@@ -29,9 +29,7 @@ impl Client {
             &[("api_key", self.api_key.as_str()), ("q", query)],
         )?;
 
-        let result: Response<Vec<Gif>> = self.reqwest.get(url)
-            .send().await?
-            .json().await?;
+        let result: Response<Vec<Gif>> = self.reqwest.get(url).send().await?.json().await?;
         return Ok(result.data);
     }
 
@@ -41,9 +39,7 @@ impl Client {
             &[("api_key", self.api_key.as_str()), ("tag", tag)],
         )?;
 
-        let result: Response<Gif> = self.reqwest.get(url)
-            .send().await?
-            .json().await?;
+        let result: Response<Gif> = self.reqwest.get(url).send().await?.json().await?;
         return Ok(result.data);
     }
 }
