@@ -112,6 +112,7 @@ async fn main() -> Result<()> {
 
     // Login with a bot token from the environment
     let (owners, bot_id) = get_bot_info(&token).await?;
+    println!("{:?}", bot_id);
 
     let mut framework = StandardFramework::new()
         .configure(|c| {
@@ -213,13 +214,14 @@ async fn send_anime_embed(
 async fn get_subscriptions_for_channel() -> HashMap<GuildId, HashMap<String, Vec<ChannelId>>> {
     let mut map: HashMap<GuildId, HashMap<String, Vec<ChannelId>>> = HashMap::new();
 
-    // map.insert(GuildId(165162546444107776), vec![
-    //
-    // ]);
     map.insert(GuildId(825808364649971712), {
         let mut map: HashMap<String, Vec<ChannelId>> = HashMap::new();
         map.insert(
             "Kumo desu ga, Nani ka".to_string(),
+            vec![ChannelId(825808364649971715)],
+        );
+        map.insert(
+            "World Trigger S3".to_string(),
             vec![ChannelId(825808364649971715)],
         );
         map
@@ -228,6 +230,10 @@ async fn get_subscriptions_for_channel() -> HashMap<GuildId, HashMap<String, Vec
         let mut map: HashMap<String, Vec<ChannelId>> = HashMap::new();
         map.insert(
             "Boku no Hero Academia".to_string(),
+            vec![ChannelId(178167855718727680)],
+        );
+        map.insert(
+            "Shingeki no Kyojin (The Final Season)".to_string(),
             vec![ChannelId(178167855718727680)],
         );
         map

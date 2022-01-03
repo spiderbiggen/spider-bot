@@ -13,16 +13,16 @@ use rss::{Channel, Item};
 use tokio::task::JoinHandle;
 use url::Url;
 
-const TRACKERS: &[&str] = &[
-    "http://nyaa.tracker.wf:7777/announce",
-    "udp://open.stealth.si:80/announce",
-    "udp://tracker.opentrackr.org:1337/announce",
-    "udp://exodus.desync.com:6969/announce",
-    "udp://tracker.torrent.eu.org:451/announce",
-];
 const BASE_URL: &str = "https://nyaa.si/?page=rss";
 
 lazy_static! {
+    static ref TRACKERS: Vec<String> = vec![
+        "http://nyaa.tracker.wf:7777/announce".into(),
+        "udp://open.stealth.si:80/announce".into(),
+        "udp://tracker.opentrackr.org:1337/announce".into(),
+        "udp://exodus.desync.com:6969/announce".into(),
+        "udp://tracker.torrent.eu.org:451/announce".into(),
+    ];
     static ref SOURCES: Vec<AnimeSource> = vec![AnimeSource::new(
         "[SubsPlease]",
         Some("1_2"),
@@ -87,7 +87,7 @@ impl Anime {
         self.id.as_deref().and_then(|hash| {
             let mut url = Url::parse(format!("magnet:?urn:btih:{}", hash).as_str()).unwrap();
             let mut pairs = url.query_pairs_mut();
-            for tracker in TRACKERS {
+            for tracker in TRACKERS.iter() {
                 pairs.append_pair("tr", tracker);
             }
             drop(pairs);
