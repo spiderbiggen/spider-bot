@@ -9,16 +9,18 @@ edition = "2018"
 [dependencies]
 kitsu = { path = "kitsu" }
 nyaa = { path = "nyaa" }
-giphy = { path = "giphy" }
-tenor = { path = "tenor" }
-chrono = "^0.4"
+giphy = { path = "giphy", optional = true }
+tenor = { path = "tenor", optional = true }
+anyhow = "1.0.41"
+chrono = "^0.4.19"
 diesel = { version = "^1.4.6", features = ["chrono", "postgres"] }
 dotenv = "^0.15.0"
-lazy_static = "^1.4.0"
-rand = "^0.8.3"
+futures = "^0.3.*"
+rand = "^0.8.4"
 reqwest = { version = "^0.11", features = ["json"] }
-serenity = "^0.10"
-tokio = { version = "^1.4.0", features = ["macros", "rt-multi-thread"] }
+serenity = { version = "^0.10", features = ["unstable_discord_api"] }
+tokio = { version = "^1.15.0", features = ["macros", "rt-multi-thread"] }
+unicode-segmentation = "^1.7.1"
 
 [workspace]
 members = [
@@ -27,3 +29,8 @@ members = [
     "nyaa",
     "tenor",
 ]
+
+[features]
+default = ["giphy", "tenor"]
+anime = []
+anime_storage = ["anime"]

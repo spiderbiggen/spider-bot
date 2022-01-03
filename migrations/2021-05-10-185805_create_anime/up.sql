@@ -3,10 +3,10 @@ CREATE TABLE anime
 (
     id                 INT PRIMARY KEY,
     slug               VARCHAR(255) NOT NULL,
-    synopsis           TEXT         NOT NULL,
-    description        TEXT         NOT NULL,
+    synopsis           TEXT,
+    description        TEXT,
     abbreviated_titles TEXT[],
-    rating             DECIMAL(2),
+    rating             REAL,
     show_type          VARCHAR(8),
     sub_type           VARCHAR(8),
     episode_count      SMALLINT
@@ -27,9 +27,9 @@ CREATE TABLE anime_titles
 CREATE TABLE anime_images
 (
     anime_id   INT,
-    image_type VARCHAR(8),
+    image_type VARCHAR(16),
     size       TEXT,
-    url        VARCHAR(1024),
+    url        VARCHAR(1024) NOT NULL,
     PRIMARY KEY (anime_id, image_type, size),
     FOREIGN KEY (anime_id) REFERENCES anime (id) ON DELETE CASCADE ON UPDATE CASCADE
 );

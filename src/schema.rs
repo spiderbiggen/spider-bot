@@ -2,10 +2,10 @@ table! {
     anime (id) {
         id -> Int4,
         slug -> Varchar,
-        synopsis -> Text,
-        description -> Text,
+        synopsis -> Nullable<Text>,
+        description -> Nullable<Text>,
         abbreviated_titles -> Nullable<Array<Text>>,
-        rating -> Nullable<Numeric>,
+        rating -> Nullable<Float4>,
         show_type -> Nullable<Varchar>,
         sub_type -> Nullable<Varchar>,
         episode_count -> Nullable<Int2>,
@@ -17,7 +17,7 @@ table! {
         anime_id -> Int4,
         image_type -> Varchar,
         size -> Text,
-        url -> Nullable<Varchar>,
+        url -> Varchar,
     }
 }
 
@@ -32,8 +32,4 @@ table! {
 joinable!(anime_images -> anime (anime_id));
 joinable!(anime_titles -> anime (anime_id));
 
-allow_tables_to_appear_in_same_query!(
-    anime,
-    anime_images,
-    anime_titles,
-);
+allow_tables_to_appear_in_same_query!(anime, anime_images, anime_titles,);
