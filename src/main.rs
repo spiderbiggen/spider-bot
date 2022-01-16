@@ -184,7 +184,7 @@ async fn send_anime_embed(
     group: &AnimeGroup,
     anime: &Vec<Anime>,
 ) {
-    if let Err(why) = channel
+    let result = channel
         .send_message(&ctx, |m| {
             m.embed(|e| {
                 e.title(format!(
@@ -205,10 +205,17 @@ async fn send_anime_embed(
                 e
             })
         })
-        .await
-    {
-        eprintln!("Error sending message: {:?}", why);
-    };
+        .await;
+    match result {
+        Ok(m) => {
+            if let Err(why) = channel.pin(&ctx, m).await {
+                eprintln!("Error pinning message: {:?}", why);
+            }
+        }
+        Err(why) => {
+            eprintln!("Error sending message: {:?}", why);
+        }
+    }
 }
 
 async fn get_subscriptions_for_channel() -> HashMap<GuildId, HashMap<String, Vec<ChannelId>>> {
