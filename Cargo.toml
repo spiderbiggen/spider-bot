@@ -15,10 +15,10 @@ anyhow = "1.0.41"
 chrono = "^0.4.19"
 diesel = { version = "^1.4.6", features = ["chrono", "postgres"] }
 dotenv = "^0.15.0"
-futures = "^0.3.*"
+futures = "^0.3.19"
 rand = "^0.8.4"
-reqwest = { version = "^0.11", features = ["json"] }
-serenity = { version = "^0.10", features = ["unstable_discord_api"] }
+reqwest = { version = "^0.11.9", features = ["json"] }
+serenity = { version = "^0.10.9", features = ["unstable_discord_api"] }
 tokio = { version = "^1.15.0", features = ["macros", "rt-multi-thread"] }
 unicode-segmentation = "^1.7.1"
 
