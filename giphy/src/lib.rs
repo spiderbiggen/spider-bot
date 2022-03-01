@@ -1,15 +1,10 @@
-#[macro_use]
-extern crate serde;
+use serde::Deserialize;
 
 use reqwest::Client as ReqClient;
-use thiserror::Error as ThisError;
+use strum_macros::{EnumString, IntoStaticStr};
 use url::Url;
 
-use crate::models::*;
-
-pub mod models;
-
-#[derive(Debug, ThisError)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Request(#[from] reqwest::Error),
@@ -18,6 +13,32 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Deserialize, Debug)]
+pub struct Response<T> {
+    pub data: T,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Gif {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub embed_url: String,
+    pub rating: String,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, EnumString, IntoStaticStr)]
+pub enum ContentFilter {
+    #[strum(serialize = "g")]
+    High,
+    #[strum(serialize = "pg")]
+    Medium,
+    #[strum(serialize = "pg13")]
+    Low,
+    #[strum(serialize = "r")]
+    Off,
+}
 
 pub struct Client {
     pub api_key: String,

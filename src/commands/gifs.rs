@@ -1,14 +1,16 @@
 #[cfg(feature = "giphy")]
 pub mod giphy {
-    use giphy::models::ContentFilter;
-    use giphy::Client;
+    use std::env;
+
     use serenity::client::Context;
     use serenity::framework::standard::{
         macros::{command, group},
         CommandResult,
     };
     use serenity::model::channel::Message;
-    use std::env;
+
+    use giphy::models::ContentFilter;
+    use giphy::Client;
 
     #[command]
     pub async fn night(ctx: &Context, msg: &Message) -> CommandResult {
@@ -34,8 +36,18 @@ pub mod giphy {
     pub struct Giphy;
 }
 
+#[cfg(not(feature = "giphy"))]
+pub mod giphy {
+    use serenity::framework::standard::macros::group;
+
+    #[group]
+    pub(crate) struct Giphy;
+}
+
 #[cfg(feature = "tenor")]
 pub mod tenor {
+    use std::env;
+
     use rand::seq::SliceRandom;
     use serenity::client::Context;
     use serenity::framework::standard::{
@@ -43,7 +55,7 @@ pub mod tenor {
         CommandResult,
     };
     use serenity::model::channel::Message;
-    use std::env;
+
     use tenor::models::ContentFilter;
     use tenor::Client;
 
@@ -73,4 +85,10 @@ pub mod tenor {
     pub(crate) struct Tenor;
 }
 
-pub(crate) struct Gifs;
+#[cfg(not(feature = "tenor"))]
+pub mod tenor {
+    use serenity::framework::standard::macros::group;
+
+    #[group]
+    pub(crate) struct Tenor;
+}
