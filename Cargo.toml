@@ -2,25 +2,23 @@
 name = "spider-bot"
 version = "0.1.0"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kitsu = { path = "kitsu" }
-nyaa = { path = "nyaa" }
+kitsu = { path = "kitsu", optional = true }
+nyaa = { path = "nyaa", optional = true }
 giphy = { path = "giphy", optional = true }
 tenor = { path = "tenor", optional = true }
-anyhow = "1.0.41"
-chrono = "^0.4.19"
-diesel = { version = "^1.4.6", features = ["chrono", "postgres"] }
-dotenv = "^0.15.0"
-futures = "^0.3.19"
+chrono = "^0.4"
+dotenv = "^0.15"
+futures = "^0.3"
 rand = "^0.8.4"
-reqwest = { version = "^0.11.9", features = ["json"] }
-serenity = { version = "^0.10.9", features = ["unstable_discord_api"] }
-tokio = { version = "^1.15.0", features = ["macros", "rt-multi-thread"] }
-unicode-segmentation = "^1.7.1"
+reqwest = { version = "^0.11", features = ["json"] }
+serenity = { version = "^0.10" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+unicode-segmentation = "1"
 
 [workspace]
 members = [
@@ -31,6 +29,6 @@ members = [
 ]
 
 [features]
-default = ["giphy", "tenor"]
-anime = []
-anime_storage = ["anime"]
+default = ["tenor", "anime-fetch"]
+anime = ["kitsu", "anime-fetch"]
+anime-fetch = ["nyaa"]
