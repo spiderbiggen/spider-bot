@@ -1,9 +1,4 @@
-#[macro_use]
-extern crate lazy_static;
-
 use std::cmp::max;
-use std::error::Error;
-use std::ops::Deref;
 
 use chrono::{DateTime, FixedOffset};
 use futures::future;
@@ -13,24 +8,17 @@ use rss::{Channel, Item};
 use tokio::task::JoinHandle;
 use url::Url;
 
-const BASE_URL: &str = "https://nyaa.si/?page=rss";
-
-lazy_static! {
-    static ref TRACKERS: Vec<String> = vec![
-        "http://nyaa.tracker.wf:7777/announce".into(),
-        "udp://open.stealth.si:80/announce".into(),
-        "udp://tracker.opentrackr.org:1337/announce".into(),
-        "udp://exodus.desync.com:6969/announce".into(),
-        "udp://tracker.torrent.eu.org:451/announce".into(),
-    ];
-    static ref SOURCES: Vec<AnimeSource> = vec![AnimeSource::new(
-        "[SubsPlease]",
-        Some("1_2"),
-        "^\\[.*?] (.*) - (\\d+)(?:\\.(\\d+))?(?:[vV](\\d+?))? \\((\\d+?p)\\) \\[.*?\\].mkv",
-        None,
-        vec!["(1080p)", "(720p)", "(540p)", "(480p)"]
-    ),];
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Request(#[from] reqwest::Error),
+    #[error(transparent)]
+    ParseUrl(#[from] url::ParseError),
+    #[error(transparent)]
+    Rss(#[from] rss::Error),
 }
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Debug)]
 pub struct AnimeSource {
@@ -62,15 +50,18 @@ impl AnimeSource {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct AnimeTarget {
-    pub(crate) title: String,
-    pub(crate) resolution: Option<String>,
+pub fn get_sources() -> Vec<AnimeSource> {
+    vec![AnimeSource::new(
+        "[SubsPlease]",
+        Some("1_2"),
+        "^\\[.*?] (.*) - (\\d+)(?:\\.(\\d+))?(?:[vV](\\d+?))? \\((\\d+?p)\\) \\[.*?\\].mkv",
+        None,
+        vec!["(1080p)", "(720p)", "(540p)", "(480p)"],
+    )]
 }
 
 #[derive(Debug)]
 pub struct Anime {
-    pub(crate) id: Option<String>,
     pub title: String,
     pub episode: Option<i32>,
     pub decimal: Option<i32>,
@@ -82,27 +73,11 @@ pub struct Anime {
     pub pub_date: DateTime<FixedOffset>,
 }
 
-impl Anime {
-    pub fn get_magnet(&self) -> Option<String> {
-        self.id.as_deref().and_then(|hash| {
-            let mut url = Url::parse(format!("magnet:?urn:btih:{}", hash).as_str()).unwrap();
-            let mut pairs = url.query_pairs_mut();
-            for tracker in TRACKERS.iter() {
-                pairs.append_pair("tr", tracker);
-            }
-            drop(pairs);
-            let string = url.to_string();
-            println!("{:?}", string);
-            Some(string)
-        })
-    }
-}
-
 pub async fn get_anime() -> Vec<Anime> {
     println!("Fetching anime");
-    let mut tasks: Vec<JoinHandle<Vec<Anime>>> = vec![];
+    let mut tasks: Vec<JoinHandle<Result<Vec<Anime>>>> = vec![];
     let client = Client::new();
-    for source in SOURCES.clone() {
+    for source in get_sources() {
         let len = source.resolutions.len();
         (0..max(1, len))
             .filter_map(|i| build_url(&source, i))
@@ -112,16 +87,16 @@ pub async fn get_anime() -> Vec<Anime> {
     let joined = future::join_all(tasks).await;
     joined
         .into_iter()
+        .filter(std::result::Result::is_ok)
+        .map(|item| item.unwrap())
         .filter(Result::is_ok)
         .flat_map(|item| item.unwrap())
         .collect()
 }
 
-async fn get_anime_for(client: Client, url: Url, source: AnimeSource) -> Vec<Anime> {
-    let val = get_feed(client, &url).await.unwrap();
-    println!("{}", val.title);
-
-    return map_anime(val.items, &source);
+async fn get_anime_for(client: Client, url: Url, source: AnimeSource) -> Result<Vec<Anime>> {
+    let val = get_feed(client, &url).await?;
+    Ok(map_anime(val.items, &source))
 }
 
 fn build_url(provider: &AnimeSource, res_index: usize) -> Option<Url> {
@@ -139,10 +114,10 @@ fn build_url(provider: &AnimeSource, res_index: usize) -> Option<Url> {
     if let Some(ref filter) = provider.filter {
         filters.push(("f", filter.as_str()));
     }
-    Url::parse_with_params(BASE_URL, filters).ok()
+    Url::parse_with_params("https://nyaa.si/?page=rss", filters).ok()
 }
 
-async fn get_feed(client: Client, url: &Url) -> Result<Channel, Box<dyn Error>> {
+async fn get_feed(client: Client, url: &Url) -> Result<Channel> {
     let content = client.get(url.as_str()).send().await?.bytes().await?;
     let channel = Channel::read_from(&content[..])?;
     Ok(channel)
@@ -202,17 +177,10 @@ fn to_anime(item: Item, regex: &Regex) -> Option<Anime> {
         .and_then(|str| DateTime::parse_from_rfc2822(str).ok())?;
     let link = item.link?;
     let comments: String = item.guid?.value;
-    let id: Option<String> = item
-        .extensions
-        .get("nyaa")
-        .and_then(|nyaa| nyaa.get("infoHash"))
-        .and_then(|info_hash| info_hash.deref().get(0))
-        .and_then(|extension| extension.value.clone());
 
     AnimeComponents::from_string(item.title, regex).and_then(
         |AnimeComponents(file_name, title, resolution, episode, decimal, version)| {
             Some(Anime {
-                id,
                 episode,
                 decimal,
                 comments,
@@ -242,7 +210,7 @@ mod tests {
             None,
             None,
         );
-        let source = SOURCES.get(0).unwrap();
+        let source = get_sources().get(0).unwrap().clone();
         let regex = Regex::new(&source.regex).unwrap();
         let result = AnimeComponents::from_string(Some(input), &regex);
         assert!(result.is_some());
@@ -260,7 +228,7 @@ mod tests {
             None,
             Some(1),
         );
-        let source = SOURCES.get(0).unwrap();
+        let source = get_sources().get(0).unwrap().clone();
         let regex = Regex::new(&source.regex).unwrap();
         let result = AnimeComponents::from_string(Some(input), &regex);
         assert!(result.is_some());
@@ -278,7 +246,7 @@ mod tests {
             None,
             Some(1),
         );
-        let source = SOURCES.get(0).unwrap();
+        let source = get_sources().get(0).unwrap().clone();
         let regex = Regex::new(&source.regex).unwrap();
         let result = AnimeComponents::from_string(Some(input), &regex);
         assert!(result.is_some());
@@ -296,7 +264,7 @@ mod tests {
             Some(1),
             None,
         );
-        let source = SOURCES.get(0).unwrap();
+        let source = get_sources().get(0).unwrap().clone();
         let regex = Regex::new(&source.regex).unwrap();
         let result = AnimeComponents::from_string(Some(input), &regex);
         assert!(result.is_some());
@@ -314,7 +282,7 @@ mod tests {
             Some(1),
             Some(1),
         );
-        let source = SOURCES.get(0).unwrap();
+        let source = get_sources().get(0).unwrap().clone();
         let regex = Regex::new(&source.regex).unwrap();
         let result = AnimeComponents::from_string(Some(input), &regex);
         assert!(result.is_some());
@@ -332,7 +300,7 @@ mod tests {
             Some(1),
             Some(1),
         );
-        let source = SOURCES.get(0).unwrap();
+        let source = get_sources().get(0).unwrap().clone();
         let regex = Regex::new(&source.regex).unwrap();
         let result = AnimeComponents::from_string(Some(input), &regex);
         assert!(result.is_some());
