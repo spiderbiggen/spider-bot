@@ -1,13 +1,13 @@
 #[macro_use]
 extern crate serde;
 
-pub mod models;
-
 use reqwest::Client as ReqClient;
+use thiserror::Error as ThisError;
 use url::Url;
 
 use crate::models::*;
-use thiserror::Error as ThisError;
+
+pub mod models;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -64,13 +64,5 @@ impl Client {
 
         let result: Response<Gif> = self.reqwest.get(url).send().await?.json().await?;
         return Ok(result.data);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
     }
 }
