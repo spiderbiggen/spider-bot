@@ -1,6 +1,9 @@
 \.env
 
 /target
-\.idea
-*.iml
-
+/.idea/aws.xml
+/.idea/codeStyles
+/.idea/dataSources
+/.idea/dataSources.xml
+/.idea/misc.xml
+/.idea/sqldialects.xml
