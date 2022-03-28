@@ -9,6 +9,9 @@ use tokio::time::Instant;
 
 use nyaa::Anime;
 
+#[cfg(feature = "kitsu")]
+use crate::commands::anime;
+
 #[derive(PartialEq, Hash, Debug)]
 struct AnimeGroup {
     pub(crate) title: String,
@@ -19,10 +22,6 @@ impl Eq for AnimeGroup {}
 
 async fn update_from_nyaa<T: TimeZone>(prev_time: DateTime<T>) -> HashMap<AnimeGroup, Vec<Anime>> {
     let anime: Vec<Anime> = nyaa::get_anime().await;
-    // let set: HashSet<String> = anime.iter().map(|a| a.title.to_string()).collect();
-    // for title in set {
-    //     println!("{:?}", get_anime(title).await)
-    // }
     let current: Vec<Anime> = anime
         .into_iter()
         .filter(|item| item.pub_date > prev_time)
@@ -76,9 +75,26 @@ async fn send_anime_embed(
     group: &AnimeGroup,
     anime: &Vec<Anime>,
 ) {
+    let image: Option<String> = if cfg!(feature = "kitsu") {
+        match anime::get_anime(&group.title).await {
+            Ok(collection) => collection.first().map_or(None, |a| {
+                a.cover_image
+                    .clone()
+                    .or(a.poster_image.clone())
+                    .map_or(None, |a| a.medium.or(a.original))
+            }),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
     let result = channel
         .send_message(&ctx, |m| {
             m.embed(|e| {
+                if let Some(url) = image {
+                    e.image(url);
+                }
                 e.title(format!(
                     "{} Ep {}",
                     &group.title,

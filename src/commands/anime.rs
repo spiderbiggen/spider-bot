@@ -10,7 +10,7 @@ use kitsu::models::Anime;
 use crate::util::edit_distance;
 
 pub(crate) async fn get_anime<S: AsRef<str>>(title: S) -> Result<Vec<Anime>, Box<dyn Error>> {
-    let mut anime = api::anime::get_collection(title.as_ref()).await?;
+    let mut anime = api::anime::get_collection(&title).await?;
     anime.sort_by_key(|a| edit_distance(&title, &a.canonical_title));
     Ok(anime)
 }

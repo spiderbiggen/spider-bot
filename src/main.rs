@@ -3,9 +3,8 @@ extern crate core;
 use std::collections::HashSet;
 use std::env;
 use std::error::Error;
-use std::sync::atomic::AtomicBool;
 #[cfg(feature = "nyaa")]
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "nyaa")]
 use std::sync::Arc;
 
@@ -18,7 +17,9 @@ use serenity::framework::standard::{
     Args, CommandGroup, CommandResult, HelpOptions, StandardFramework,
 };
 use serenity::http::Http;
-use serenity::model::{channel::Message, id::GuildId, prelude::UserId};
+#[cfg(feature = "nyaa")]
+use serenity::model::id::GuildId;
+use serenity::model::{channel::Message, prelude::UserId};
 
 #[cfg(feature = "kitsu")]
 use commands::anime::*;
@@ -57,6 +58,7 @@ struct General;
 struct General;
 
 struct Handler {
+    #[cfg(feature = "nyaa")]
     is_loop_running: AtomicBool,
 }
 
@@ -130,6 +132,7 @@ async fn main() {
 
     let mut client = Client::builder(token)
         .event_handler(Handler {
+            #[cfg(feature = "nyaa")]
             is_loop_running: false.into(),
         })
         .application_id(bot_id.0)
