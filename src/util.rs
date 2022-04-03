@@ -1,5 +1,21 @@
 use std::mem::swap;
+
 use unicode_segmentation::UnicodeSegmentation;
+
+pub fn smallest_edit_distance<S: AsRef<str>, S2: AsRef<str>>(a: S, bs: Vec<S2>) -> usize {
+    fn get_len<S: AsRef<str>>(a: S) -> usize {
+        let a_chars: Vec<&str> = a.as_ref().graphemes(true).collect();
+        return a_chars.len();
+    }
+    if bs.is_empty() {
+        get_len(&a)
+    } else {
+        bs.iter()
+            .map(|b| edit_distance(&a, b))
+            .min()
+            .unwrap_or_else(|| get_len(&a))
+    }
+}
 
 pub fn edit_distance<S: AsRef<str>, S2: AsRef<str>>(a: S, b: S2) -> usize {
     let a_ref = a.as_ref();

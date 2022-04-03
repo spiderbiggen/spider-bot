@@ -7,11 +7,10 @@ use serenity::model::channel::Message;
 use kitsu::api;
 use kitsu::models::Anime;
 
-use crate::util::edit_distance;
+use crate::util::smallest_edit_distance;
 
 pub(crate) async fn get_anime<S: AsRef<str>>(title: S) -> Result<Vec<Anime>, Box<dyn Error>> {
-    let mut anime = api::anime::get_collection(&title).await?;
-    anime.sort_by_key(|a| edit_distance(&title, &a.canonical_title));
+    let anime = api::anime::get_collection(&title).await?;
     Ok(anime)
 }
 
@@ -21,11 +20,19 @@ async fn search(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let message = if !title.is_empty() {
         let results = get_anime(title).await;
         match results {
-            Ok(results) if !results.is_empty() => results
-                .into_iter()
-                .map(|a| format!("{} <{}>", a.canonical_title, a.rating.unwrap_or("?".into())))
-                .collect::<Vec<String>>()
-                .join("\n"),
+            Ok(mut results) if !results.is_empty() => {
+                results.sort_by_key(|a| {
+                    let mut titles = vec![&a.canonical_title];
+                    titles.extend(&a.abbreviated_titles);
+                    a.titles.iter().map(|(_, b)| b).for_each(|a| titles.push(a));
+                    smallest_edit_distance(&title, titles)
+                });
+                results
+                    .into_iter()
+                    .map(|a| format!("{} <{}>", a.canonical_title, a.rating.unwrap_or("?".into())))
+                    .collect::<Vec<String>>()
+                    .join("\n")
+            }
             _ => format!("No results found for {}", title),
         }
     } else {
