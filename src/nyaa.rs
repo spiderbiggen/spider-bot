@@ -147,6 +147,10 @@ async fn get_subscriptions_for_channel() -> HashMap<GuildId, HashMap<String, Vec
             "Girls und Panzer das Finale".to_string(),
             vec![ChannelId(825808364649971715)],
         );
+        map.insert(
+            "Tate no Yuusha no Nariagari S2".to_string(),
+            vec![ChannelId(825808364649971715)],
+        );
         map
     });
     map.insert(GuildId(165162546444107776), {
