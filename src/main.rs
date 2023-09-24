@@ -1,154 +1,148 @@
 extern crate core;
 
-use std::collections::HashSet;
-use std::env;
 use std::error::Error;
-#[cfg(feature = "nyaa")]
-use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(feature = "nyaa")]
+use std::ops::Deref;
 use std::sync::Arc;
 
 use dotenv::dotenv;
 use serenity::async_trait;
+use serenity::client::bridge::gateway::ShardManager;
 use serenity::client::{Client, Context, EventHandler};
-use serenity::framework::standard::{
-    help_commands,
-    macros::{command, group, help},
-    Args, CommandGroup, CommandResult, HelpOptions, StandardFramework,
-};
-use serenity::http::Http;
-#[cfg(feature = "nyaa")]
-use serenity::model::id::GuildId;
-use serenity::model::{channel::Message, prelude::UserId};
+use serenity::model::gateway::Ready;
+use serenity::model::prelude::command::Command;
+use serenity::model::prelude::GuildId;
+use serenity::model::prelude::{Interaction, ResumedEvent};
+use serenity::prelude::GatewayIntents;
+use serenity::prelude::*;
+use tracing::{error, info};
+use tracing_subscriber::prelude::*;
 
-#[cfg(feature = "kitsu")]
-use commands::anime::*;
-use commands::dice::*;
-use commands::gifs::giphy::GIPHY_GROUP;
-use commands::gifs::tenor::TENOR_GROUP;
+use tenor::models::Gif;
+use tenor::Client as TenorClient;
 
+use crate::cache::MemoryCache;
+
+mod cache;
 mod commands;
-#[cfg(feature = "nyaa")]
-mod nyaa;
-#[cfg(feature = "kitsu")]
+mod consts;
 mod util;
 
-#[help]
-#[max_levenshtein_distance(3)]
-async fn my_help(
-    context: &Context,
-    msg: &Message,
-    args: Args,
-    help_options: &'static HelpOptions,
-    groups: &[&'static CommandGroup],
-    owners: HashSet<UserId>,
-) -> CommandResult {
-    let _ = help_commands::with_embeds(context, msg, args, help_options, groups, owners).await;
-    Ok(())
+pub struct ShardManagerContainer;
+
+impl TypeMapKey for ShardManagerContainer {
+    type Value = Arc<Mutex<ShardManager>>;
 }
 
-#[cfg(feature = "kitsu")]
-#[group]
-#[commands(ping, roll, search)]
-struct General;
-
-#[cfg(not(feature = "kitsu"))]
-#[group]
-#[commands(ping, roll)]
-struct General;
-
-struct Handler {
-    #[cfg(feature = "nyaa")]
-    is_loop_running: AtomicBool,
+#[derive(Debug, Clone)]
+struct SpiderBot {
+    gif_cache: MemoryCache<[Gif]>,
+    tenor: TenorClient,
 }
 
 #[async_trait]
-impl EventHandler for Handler {
-    // We use the cache_ready event just in case some cache operation is required in whatever use
-    // case you have for this.
-    #[cfg(feature = "nyaa")]
-    async fn cache_ready(&self, ctx: Context, guilds: Vec<GuildId>) {
-        println!("Cache built successfully!");
+impl EventHandler for SpiderBot {
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        info!("Connected as {}", ready.user.name);
+        if cfg!(debug_assertions) {
+            for guild in ready.guilds {
+                log_slash_commands(
+                    guild
+                        .id
+                        .set_application_commands(&ctx, |bot_commands| {
+                            commands::register_commands(bot_commands)
+                        })
+                        .await,
+                    Some(guild.id),
+                );
+            }
+        } else {
+            log_slash_commands(
+                Command::set_global_application_commands(&ctx, |bot_commands| {
+                    commands::register_commands(bot_commands)
+                })
+                .await,
+                None,
+            );
+        }
+    }
 
-        let ctx = Arc::new(ctx);
-        let guilds = Arc::new(guilds);
+    async fn resume(&self, _: Context, _: ResumedEvent) {
+        info!("Resumed");
+    }
 
-        if !self.is_loop_running.load(Ordering::Relaxed) {
-            // We have to clone the Arc, as it gets moved into the new thread.
-            let ctx1 = Arc::clone(&ctx);
-            let guilds1 = Arc::clone(&guilds);
-            tokio::spawn(nyaa::periodic_fetch(ctx1, guilds1));
-            // Now that the loop is running, we set the bool to true
-            self.is_loop_running.swap(true, Ordering::Relaxed);
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        match interaction {
+            Interaction::ApplicationCommand(command) => {
+                commands::interaction(command, &ctx, self).await;
+            }
+            Interaction::Autocomplete(command) => {
+                commands::autocomplete(command, &ctx).await;
+            }
+            _ => {
+                error!("Unsupported interaction type received: {:?}", interaction);
+            }
         }
     }
 }
 
-async fn get_bot_info(token: &str) -> Result<(HashSet<UserId>, UserId), Box<dyn Error>> {
-    let http = Http::new_with_token(token.as_ref());
-
-    // We will fetch your bot's owners and id
-    let info = http.get_current_application_info().await?;
-    let mut owners = HashSet::new();
-    match info.team {
-        Some(team) => owners.insert(team.owner_user_id),
-        None => owners.insert(info.owner.id),
-    };
-    Ok(http
-        .get_current_user()
-        .await
-        .map(move |user| (owners, user.id))?)
-}
-
 #[tokio::main]
-async fn main() {
-    dotenv().ok();
+async fn main() -> Result<(), Box<dyn Error>> {
+    dotenv()?;
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
-    let token = env::var("DISCORD_TOKEN").expect("token");
+    let discord_token = util::get_env_var("DISCORD_TOKEN");
+    let tenor_token = util::get_env_var("TENOR_TOKEN");
 
     // Login with a bot token from the environment
-    let (owners, bot_id) = match get_bot_info(&token).await {
-        Ok((owners, id)) => (owners, id),
-        Err(why) => panic!("Could not access application info: {:?}", why),
-    };
-
-    let mut framework = StandardFramework::new()
-        .configure(|c| {
-            c.with_whitespace(true)
-                .prefix("/")
-                .on_mention(Some(bot_id))
-                .no_dm_prefix(true)
-                .owners(owners)
-        }) // set the bot's prefix to "/"
-        .group(&GENERAL_GROUP)
-        .help(&MY_HELP);
-
-    if cfg!(feature = "giphy") {
-        framework = framework.group(&GIPHY_GROUP);
-    }
-    if cfg!(feature = "tenor") {
-        framework = framework.group(&TENOR_GROUP);
-    }
-
-    let mut client = Client::builder(token)
-        .event_handler(Handler {
-            #[cfg(feature = "nyaa")]
-            is_loop_running: false.into(),
+    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+    let mut client = Client::builder(discord_token, intents)
+        .event_handler(SpiderBot {
+            gif_cache: MemoryCache::new(),
+            tenor: tenor::Client::new(tenor_token),
         })
-        .application_id(bot_id.0)
-        .framework(framework)
-        .await
-        .expect("Error creating client");
+        .await?;
+
+    {
+        let mut data = client.data.write().await;
+        data.insert::<ShardManagerContainer>(client.shard_manager.clone());
+    }
+
+    let shard_manager = client.shard_manager.clone();
+
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Could not register ctrl+c handler");
+        shard_manager.lock().await.shutdown_all().await;
+    });
 
     // start listening for events by starting a single shard
-    if let Err(why) = client.start().await {
-        println!("An error occurred while running the client: {:?}", why);
+    if let Err(err) = client.start().await {
+        error!(error = ?err, "An error occurred while running the client");
     }
+    Ok(())
 }
 
-#[command]
-async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(ctx, "Pong!").await?;
+fn log_slash_commands(result: serenity::Result<Vec<Command>>, guild_id: Option<GuildId>) {
+    match result {
+        Ok(c) => {
+            let commands_registered = c.iter().fold(String::new(), |mut s, cmd| {
+                if !s.is_empty() {
+                    s.push_str(", ");
+                }
 
-    Ok(())
+                s.push_str(&cmd.name);
+                s
+            });
+
+            info!("Commands registered: {}", commands_registered);
+        }
+        Err(e) => match guild_id {
+            Some(g) => error!("Error setting slash commands for guild {}: {}", g, e),
+            None => error!("Error setting global slash commands: {}", e),
+        },
+    };
 }

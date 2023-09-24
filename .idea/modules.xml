@@ -2,11 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/giphy/giphy.iml" filepath="$PROJECT_DIR$/giphy/giphy.iml" />
-      <module fileurl="file://$PROJECT_DIR$/kitsu/kitsu.iml" filepath="$PROJECT_DIR$/kitsu/kitsu.iml" />
-      <module fileurl="file://$PROJECT_DIR$/nyaa/nyaa.iml" filepath="$PROJECT_DIR$/nyaa/nyaa.iml" />
-      <module fileurl="file://$PROJECT_DIR$/spider-bot.iml" filepath="$PROJECT_DIR$/spider-bot.iml" />
-      <module fileurl="file://$PROJECT_DIR$/tenor/tenor.iml" filepath="$PROJECT_DIR$/tenor/tenor.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/spider-bot.iml" filepath="$PROJECT_DIR$/.idea/spider-bot.iml" />
     </modules>
   </component>
 </project>
