@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM rust:1.72.1 as builder
+FROM --platform=$BUILDPLATFORM rust:1.72.1-bookworm as builder
 
 ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
 ENV CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
@@ -25,7 +25,7 @@ RUN rustup target add $(cat /rust_target.txt)
 RUN cargo build --release --target $(cat /rust_target.txt)
 RUN cp ./target/$(cat /rust_target.txt)/release/spider-bot /spider-bot
 
-FROM gcr.io/distroless/cc as application
+FROM gcr.io/distroless/cc-debian12 as application
 
 COPY --from=builder /spider-bot /
 
