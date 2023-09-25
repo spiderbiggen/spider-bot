@@ -1,15 +1,3 @@
-use std::env;
-use std::mem::swap;
-
-use unicode_segmentation::UnicodeSegmentation;
-
-pub(crate) fn get_env_var(name: &str) -> &'static str {
-    match env::var(name) {
-        Ok(value) => Box::new(value).leak(),
-        Err(_) => panic!("Environment variable not found: {name}"),
-    }
-}
-
 pub trait Subdivision {
     fn subdivide(&self, max_chunk_size: usize) -> SubdivisionIter;
 }

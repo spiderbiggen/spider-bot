@@ -1,0 +1,3 @@
+**/sqlx-data.json eol=lf
+**/*.sql eol=lf
+**/*.rs eol=lf

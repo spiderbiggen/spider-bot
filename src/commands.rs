@@ -33,16 +33,14 @@ pub(crate) async fn interaction(
 ) {
     let command_name = command.data.name.as_str();
     let result = match command_name {
-        #[cfg(feature = "kitsu")]
-        "anime" => anime::interaction(bot, context, command).await,
-        // "dice" => dice::interaction(bot, context, command).await,
         "play" => gifs::play(context, &command, bot).await,
+        "hurry" => gifs::hurry(context, &command, bot).await,
         "sleep" => gifs::sleep(context, &command, bot).await,
         cmd => handle_unknown_command(context, &command, cmd).await,
     };
 
     if let Err(err) = result {
-        error!(err = ?err, "Error handling command {command_name}");
+        error!("Error handling command {command_name}. {err}");
         let _ = send_error_interaction(
             context,
             &command,
@@ -56,9 +54,6 @@ pub(crate) async fn interaction(
 pub(crate) async fn autocomplete(command: AutocompleteInteraction, context: &Context) {
     let command_name = command.data.name.as_str();
     let result = match command_name {
-        #[cfg(feature = "kitsu")]
-        "anime" => anime::interaction(bot, context, command).await,
-        // "dice" => dice::interaction(bot, context, command).await,
         "play" => gifs::play_autocomplete(context, &command).await,
         cmd => handle_unknown_autocomplete(context, &command, cmd).await,
     };

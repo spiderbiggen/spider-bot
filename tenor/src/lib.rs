@@ -1,11 +1,15 @@
 #[macro_use]
 extern crate serde;
 
-use error::Error;
+use std::borrow::Cow;
+use std::sync::Arc;
+
 use itertools::Itertools;
 use reqwest::Client as ReqwestClient;
 use tracing::debug;
 use url::Url;
+
+use error::Error;
 
 use crate::models::{ContentFilter, Gif, MediaFilter, Response};
 
@@ -14,51 +18,51 @@ pub mod models;
 
 #[derive(Debug, Clone)]
 pub struct Client {
-    api_key: &'static str,
+    api_key: Arc<str>,
     reqwest: ReqwestClient,
     base_config: Option<Config>,
 }
 
 impl Client {
-    pub fn new(api_key: &'static str) -> Client {
+    pub fn new(api_key: String) -> Client {
         Self::with_config(api_key, None)
     }
 
-    pub fn with_config(api_key: &'static str, config: Option<Config>) -> Client {
+    pub fn with_config(api_key: String, config: Option<Config>) -> Client {
         Client {
-            api_key,
+            api_key: api_key.into(),
             reqwest: ReqwestClient::new(),
             base_config: config,
         }
     }
 
-    fn build_query_string(
-        &self,
-        query: &str,
-        config: Option<&Config>,
-    ) -> Vec<(&'static str, String)> {
+    fn build_query_string<'a>(
+        &'a self,
+        query: &'a str,
+        config: Option<&'a Config>,
+    ) -> Vec<(&'static str, Cow<'a, str>)> {
         // always overallocate to maximum capacity
         let mut params = Vec::with_capacity(9);
-        params.push(("key", self.api_key.to_owned()));
-        params.push(("q", query.to_owned()));
+        params.push(("key", self.api_key.as_ref().into()));
+        params.push(("q", query.into()));
         if let Some(country) = config
             .and_then(|c| c.country.as_ref())
             .or(self.base_config.as_ref().and_then(|c| c.country.as_ref()))
         {
-            params.push(("country", country.to_owned()));
+            params.push(("country", country.into()));
         }
         if let Some(locale) = config
             .and_then(|c| c.locale.as_ref())
             .or(self.base_config.as_ref().and_then(|c| c.locale.as_ref()))
         {
-            params.push(("locale", locale.to_owned()));
+            params.push(("locale", locale.into()));
         }
         if let Some(content_filter) = config.and_then(|c| c.content_filter.as_ref()).or(self
             .base_config
             .as_ref()
             .and_then(|c| c.content_filter.as_ref()))
         {
-            let filter = Into::<&'static str>::into(content_filter).to_owned();
+            let filter = Into::<&'static str>::into(content_filter).into();
             params.push(("contentfilter", filter));
         }
         if let Some(media_filter) = config.and_then(|c| c.media_filter.as_ref()).or(self
@@ -70,25 +74,25 @@ impl Client {
                 .iter()
                 .map(Into::<&'static str>::into)
                 .join(",");
-            params.push(("media_filter", filter));
+            params.push(("media_filter", filter.into()));
         }
         if let Some(random) = config
             .and_then(|c| c.random.as_ref())
             .or(self.base_config.as_ref().and_then(|c| c.random.as_ref()))
         {
-            params.push(("random", random.to_string()));
+            params.push(("random", random.to_string().into()));
         }
         if let Some(limit) = config
             .and_then(|c| c.limit.as_ref())
             .or(self.base_config.as_ref().and_then(|c| c.limit.as_ref()))
         {
-            params.push(("limit", limit.to_string()));
+            params.push(("limit", limit.to_string().into()));
         }
         if let Some(position) = config
             .and_then(|c| c.position.as_ref())
             .or(self.base_config.as_ref().and_then(|c| c.position.as_ref()))
         {
-            params.push(("pos", position.to_string()));
+            params.push(("pos", position.into()));
         }
         params
     }

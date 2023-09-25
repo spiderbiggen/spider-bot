@@ -33,12 +33,6 @@ impl<T: ?Sized> MemoryCache<T> {
         Self::default()
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            map: Arc::new(RwLock::new(HashMap::with_capacity(capacity))),
-        }
-    }
-
     pub fn get(&self, key: &str) -> Option<Arc<T>> {
         let map = self.map.read().unwrap();
         map.get(key)

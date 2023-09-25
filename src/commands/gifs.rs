@@ -90,7 +90,48 @@ pub(crate) async fn play(
                                 .unwrap_or(&interaction.user.default_avatar_url()),
                         )
                     })
-                    .description(format_args!("{}! Let's play a game!", username))
+                    .description(format_args!("{username}! Let's play a game!"))
+                    .colour(Color::DARK_GREEN);
+                embed
+            })
+        })
+        .await?;
+    Ok(())
+}
+
+#[instrument(skip_all)]
+pub(crate) async fn hurry(
+    ctx: &Context,
+    interaction: &ApplicationCommandInteraction,
+    bot: &SpiderBot,
+) -> Result<(), CommandError> {
+    let mut username: String = String::from("@here");
+    for option in interaction.data.options.iter() {
+        if option.name == "user" {
+            if let Some(CommandDataOptionValue::User(user, _)) = &option.resolved {
+                username = user.mention().to_string()
+            }
+        }
+    }
+
+    interaction.defer(ctx).await?;
+    let gif = get_gif(bot, "hurry up", true).await?;
+    info!(gif =?gif, "found gif to send to {username}");
+    interaction
+        .edit_original_interaction_response(ctx, |response| {
+            response.embed(|embed| {
+                embed
+                    .image(gif)
+                    .author(|author| {
+                        author.name(&interaction.user.name).icon_url(
+                            interaction
+                                .user
+                                .avatar_url()
+                                .as_ref()
+                                .unwrap_or(&interaction.user.default_avatar_url()),
+                        )
+                    })
+                    .description(format_args!("{username}! Hurry up!"))
                     .colour(Color::DARK_GREEN);
                 embed
             })
@@ -323,14 +364,13 @@ impl PartialEq<&NaiveDate> for DateRange {
 enum GifQuery {
     Single(&'static str),
     Random(&'static str),
-    Search(&'static str),
 }
 
 impl GifQuery {
     async fn find(&self, bot: &SpiderBot) -> Result<Cow<'static, str>, GifError> {
         match self {
             GifQuery::Single(url) => Ok(Cow::Borrowed(url)),
-            GifQuery::Random(query) | GifQuery::Search(query) => {
+            GifQuery::Random(query) => {
                 let gif = get_gif(bot, query, matches!(self, GifQuery::Random(_))).await?;
                 Ok(Cow::Owned(gif))
             }

@@ -1,0 +1,14 @@
+root = true
+
+[*]
+insert_final_newline = true
+
+[*.sql]
+end_of_line = lf
+insert_final_newline = false
+
+[*.rs]
+end_of_line = lf
+
+[sqlx-data.json]
+end_of_line = lf

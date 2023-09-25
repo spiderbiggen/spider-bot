@@ -1,7 +1,6 @@
 extern crate core;
 
-use std::error::Error;
-use std::ops::Deref;
+use std::env;
 use std::sync::Arc;
 
 use dotenv::dotenv;
@@ -17,11 +16,13 @@ use serenity::prelude::*;
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
+use crate::background_tasks::run_periodic_tasks;
 use tenor::models::Gif;
 use tenor::Client as TenorClient;
 
 use crate::cache::MemoryCache;
 
+mod background_tasks;
 mod cache;
 mod commands;
 mod consts;
@@ -64,6 +65,8 @@ impl EventHandler for SpiderBot {
                 None,
             );
         }
+
+        run_periodic_tasks(self).await;
     }
 
     async fn resume(&self, _: Context, _: ResumedEvent) {
@@ -86,15 +89,15 @@ impl EventHandler for SpiderBot {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> anyhow::Result<()> {
     dotenv()?;
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let discord_token = util::get_env_var("DISCORD_TOKEN");
-    let tenor_token = util::get_env_var("TENOR_TOKEN");
+    let discord_token = Box::leak(Box::new(env::var("DISCORD_TOKEN")?));
+    let tenor_token = env::var("TENOR_TOKEN")?;
 
     // Login with a bot token from the environment
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
@@ -138,11 +141,11 @@ fn log_slash_commands(result: serenity::Result<Vec<Command>>, guild_id: Option<G
                 s
             });
 
-            info!("Commands registered: {}", commands_registered);
+            info!("Commands registered: {commands_registered}");
         }
         Err(e) => match guild_id {
-            Some(g) => error!("Error setting slash commands for guild {}: {}", g, e),
-            None => error!("Error setting global slash commands: {}", e),
+            Some(g) => error!("Error setting slash commands for guild {g}: {e}"),
+            None => error!("Error setting global slash commands: {e}"),
         },
     };
 }
