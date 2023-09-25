@@ -1,0 +1,9 @@
+.git
+.fleet
+.github
+.idea
+.env
+.dockerignore
+.gitignore
+Dockerfile
+target

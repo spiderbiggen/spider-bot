@@ -1,59 +1,48 @@
-use std::mem::swap;
+pub trait Subdivision {
+    fn subdivide(&self, max_chunk_size: usize) -> SubdivisionIter;
+}
 
-use unicode_segmentation::UnicodeSegmentation;
-
-pub fn smallest_edit_distance<S: AsRef<str>, S2: AsRef<str>>(a: S, bs: Vec<S2>) -> usize {
-    fn get_len<S: AsRef<str>>(a: S) -> usize {
-        let a_chars: Vec<&str> = a.as_ref().graphemes(true).collect();
-        return a_chars.len();
-    }
-    if bs.is_empty() {
-        get_len(&a)
-    } else {
-        bs.iter()
-            .map(|b| edit_distance(&a, b))
-            .min()
-            .unwrap_or_else(|| get_len(&a))
+impl Subdivision for &str {
+    fn subdivide(&self, max_chunk_size: usize) -> SubdivisionIter {
+        SubdivisionIter::new(self, max_chunk_size)
     }
 }
 
-pub fn edit_distance<S: AsRef<str>, S2: AsRef<str>>(a: S, b: S2) -> usize {
-    let a_ref = a.as_ref();
-    let b_ref = b.as_ref();
-    if a_ref == b_ref {
-        return 0;
-    }
-    let a_chars: Vec<&str> = a_ref.graphemes(true).collect();
-    let b_chars: Vec<&str> = b_ref.graphemes(true).collect();
+pub struct SubdivisionIter<'a> {
+    source: &'a str,
+    index: usize,
+    max_chunk_size: usize,
+}
 
-    match (a_chars.len(), b_chars.len()) {
-        (size, 0) => size,
-        (0, size) => size,
-        (a_len, b_len) => {
-            let mut v0 = vec![0; b_len + 1];
-            let mut v1 = vec![0; b_len + 1];
-            for i in 0..b_len {
-                v0[i] = i;
-            }
-
-            for i in 0..a_len {
-                v1[0] = i + 1;
-
-                for j in 0..b_len {
-                    let d_cost = v0[j + 1] + 1;
-                    let i_cost = v1[j] + 1;
-                    let s_cost = v0[j]
-                        + if a_chars.get(i) == b_chars.get(i) {
-                            0
-                        } else {
-                            1
-                        };
-
-                    v1[j + 1] = d_cost.min(i_cost).min(s_cost);
-                }
-                swap(&mut v0, &mut v1);
-            }
-            v0[b_len]
+impl<'a> SubdivisionIter<'a> {
+    fn new(source: &'a str, max_chunk_size: usize) -> SubdivisionIter<'a> {
+        SubdivisionIter {
+            source,
+            index: 0,
+            max_chunk_size,
         }
+    }
+}
+
+impl<'a> Iterator for SubdivisionIter<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.source.len() {
+            return None;
+        }
+
+        let mut next_index = 0;
+        for char in self.source[self.index..].chars() {
+            if next_index + char.len_utf8() > self.max_chunk_size {
+                break;
+            }
+            next_index += char.len_utf8();
+        }
+        let next_index = self.index + next_index;
+        let result = self.source[self.index..next_index].trim();
+        self.index = next_index;
+
+        Some(result)
     }
 }
