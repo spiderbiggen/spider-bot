@@ -90,7 +90,7 @@ impl EventHandler for SpiderBot {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    dotenv()?;
+    let _ = dotenv();
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .with(tracing_subscriber::fmt::layer())
