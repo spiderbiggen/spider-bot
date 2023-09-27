@@ -1,6 +1,6 @@
 [package]
 name = "spider-bot"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2021"
 
