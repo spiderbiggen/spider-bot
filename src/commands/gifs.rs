@@ -146,7 +146,7 @@ pub(crate) async fn sleep(
     interaction: &ApplicationCommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
-    let today = Utc::today().naive_utc();
+    let today = Utc::now().date_naive();
     let collection = SLEEP_GIF_COLLECTION.current(&today);
     interaction.defer(ctx).await?;
     let (gif, message) = collection.find(bot).await?;
