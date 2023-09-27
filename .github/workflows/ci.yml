@@ -26,11 +26,8 @@ jobs:
       - name: Check cargo fmt
         run: cargo fmt --all -- --check
 
-      - name: Test
-        run: cargo test --no-fail-fast --workspace
-
       - name: Build tests
-        uses: ClementTsang/cargo-action@v0.0.5
+        uses: ClementTsang/cargo-action@v0.0.6
         with:
           command: test
           args: --no-run --locked
@@ -46,7 +43,7 @@ jobs:
           RUST_BACKTRACE: full
 
       - name: Run clippy
-        uses: ClementTsang/cargo-action@v0.0.5
+        uses: ClementTsang/cargo-action@v0.0.6
         with:
           command: clippy
           args: --all-targets --workspace -- -D warnings
@@ -91,7 +88,7 @@ jobs:
           cache-all-crates: true
 
       - name: Cargo Build
-        uses: ClementTsang/cargo-action@v0.0.5
+        uses: ClementTsang/cargo-action@v0.0.6
         with:
           command: build
           args: --all-targets --verbose --target=${{ matrix.info.target }} --locked --release
