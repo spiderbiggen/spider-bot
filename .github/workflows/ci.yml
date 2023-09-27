@@ -152,8 +152,8 @@ jobs:
       - name: Copy output files for Docker
         run: |
           mkdir -p exec/linux
-          cp target/x86_64-unknown-linux-gnu/release/spider-bot exec/linux/amd64
-          cp target/aarch64-unknown-linux-gnu/release/spider-bot exec/linux/arm64
+          cp target/artifact/x86_64-unknown-linux-gnu/release/spider-bot exec/linux/amd64
+          cp target/artifact/aarch64-unknown-linux-gnu/release/spider-bot exec/linux/arm64
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
