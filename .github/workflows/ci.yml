@@ -95,10 +95,19 @@ jobs:
           use-cross: ${{ matrix.info.cross }}
           cross-version: ${{ matrix.info.cross-version || '0.2.5' }}
 
+      - uses: actions/upload-artifact@v3
+        with:
+          path: |
+            target/*/release/spider-bot
+            target/*/release/spider-bot.exe
+
+
   debug:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          path: target
       - name: Display structure of downloaded files
         run: ls -R
