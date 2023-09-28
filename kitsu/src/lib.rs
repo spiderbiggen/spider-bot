@@ -1,16 +1,12 @@
-#[macro_use]
-extern crate jsonapi;
-#[macro_use]
-extern crate serde;
-
+use jsonapi::api::DocumentError;
 use thiserror::Error as ThisError;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
     #[error("Empty Response")]
     Empty,
-    #[error("Wrong Response from api")]
-    Api(jsonapi::api::DocumentError),
+    #[error("Wrong Response from api. {0:?}")]
+    Api(Box<DocumentError>),
     #[error(transparent)]
     Parse(#[from] jsonapi::errors::Error),
     #[error(transparent)]
@@ -19,46 +15,47 @@ pub enum Error {
     Url(#[from] url::ParseError),
 }
 
+impl From<DocumentError> for Error {
+    fn from(value: DocumentError) -> Self {
+        Self::Api(Box::new(value))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod models {
     use chrono::{DateTime, Utc};
     use jsonapi::api::*;
+    use jsonapi::jsonapi_model;
     use jsonapi::model::*;
+    use serde::{Deserialize, Serialize};
 
     use crate::{Error, Result};
 
     pub trait ParseJsonApi: JsonApiModel {
         fn from_document(document: JsonApiDocument) -> Result<Self> {
             match document {
-                JsonApiDocument::Data(doc) => {
-                    Self::from_jsonapi_document(&doc).map_err(|err| Error::Parse(err))
-                }
-                JsonApiDocument::Error(err) => Err(Error::Api(err).into()),
+                JsonApiDocument::Data(doc) => Ok(Self::from_jsonapi_document(&doc)?),
+                JsonApiDocument::Error(err) => Err(err.into()),
             }
         }
 
         fn collection_from_document(document: JsonApiDocument) -> Result<Vec<Self>> {
             match document {
-                JsonApiDocument::Data(doc) => match doc.data {
-                    Some(data) => match data {
-                        PrimaryData::None => Ok(Vec::new()),
-                        PrimaryData::Single(resource) => {
-                            Self::from_jsonapi_resource(&resource, &None)
-                                .map(|a| vec![a])
-                                .map_err(|err| Error::Parse(err).into())
-                        }
-                        PrimaryData::Multiple(resources) => resources
-                            .iter()
-                            .map(|res| {
-                                Self::from_jsonapi_resource(&res, &None)
-                                    .map_err(|err| Error::Parse(err).into())
-                            })
-                            .collect(),
-                    },
-                    None => Err(Error::Empty.into()),
+                JsonApiDocument::Data(DocumentData { data: None, .. }) => Err(Error::Empty),
+                JsonApiDocument::Data(DocumentData {
+                    data: Some(data), ..
+                }) => match data {
+                    PrimaryData::None => Ok(Vec::new()),
+                    PrimaryData::Single(resource) => {
+                        Ok(vec![Self::from_jsonapi_resource(&resource, &None)?])
+                    }
+                    PrimaryData::Multiple(resources) => resources
+                        .iter()
+                        .map(|res| Self::from_jsonapi_resource(res, &None).map_err(Error::Parse))
+                        .collect(),
                 },
-                JsonApiDocument::Error(err) => Err(Error::Api(err).into()),
+                JsonApiDocument::Error(err) => Err(err.into()),
             }
         }
     }
@@ -139,15 +136,15 @@ pub mod api {
 
     async fn get_document(url: Url) -> Result<JsonApiDocument> {
         let document: JsonApiDocument = get_url_builder(url).send().await?.json().await?;
-        return Ok(document);
+        Ok(document)
     }
 
-    pub(self) async fn get_resource<T: ParseJsonApi>(url: Url) -> Result<T> {
+    async fn get_resource<T: ParseJsonApi>(url: Url) -> Result<T> {
         let doc = get_document(url).await?;
         T::from_document(doc)
     }
 
-    pub(self) async fn get_resources<T: ParseJsonApi>(url: Url) -> Result<Vec<T>> {
+    async fn get_resources<T: ParseJsonApi>(url: Url) -> Result<Vec<T>> {
         let doc = get_document(url).await?;
         T::collection_from_document(doc)
     }
@@ -162,8 +159,7 @@ pub mod api {
         pub async fn get_resource(id: u64) -> Result<models::Anime> {
             let url_string = format!("https://kitsu.io/api/edge/anime/{}", id);
             let url = Url::parse(&url_string)?;
-            let anime = api::get_resource::<models::Anime>(url).await?;
-            return Ok(anime);
+            api::get_resource::<models::Anime>(url).await
         }
 
         pub async fn get_collection<S: AsRef<str>>(title: S) -> Result<Vec<models::Anime>> {
@@ -184,8 +180,7 @@ pub mod api {
             }
             .to_params();
             url.set_query(Some(&query));
-            let anime = api::get_resources::<models::Anime>(url).await?;
-            return Ok(anime);
+            api::get_resources::<models::Anime>(url).await
         }
     }
 }
