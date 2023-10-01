@@ -5,7 +5,6 @@ use crate::SpiderBot;
 ///
 /// ### Arguments
 ///
-/// - `context` - the Serenity context to delegate to tasks
 /// - `bot` - the bot instance to delegate to tasks
 pub(crate) fn run_periodic_tasks(bot: &SpiderBot) {
     let c = bot.gif_cache.clone();
