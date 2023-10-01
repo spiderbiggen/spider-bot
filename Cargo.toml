@@ -3,17 +3,16 @@ name = "spider-bot"
 version = "0.1.2"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2021"
+description = "Discord bot for the 'Turtle Force' discord"
 
 [workspace]
 members = [
-    "kitsu",
     "tenor",
 ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kitsu = { path = "kitsu", optional = true }
-tenor = { path = "tenor", optional = true }
+tenor = { path = "tenor" }
 
 async-trait = "0.1.52"
 anyhow = "1.0.75"
@@ -21,11 +20,11 @@ chrono = "0.4.19"
 dotenv = "0.15.0"
 futures = "0.3.21"
 rand = "0.8.5"
-tokio = { version = "1.32.0", features = ["full", "macros", "rt-multi-thread"] }
 thiserror = "1.0.30"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 native-tls = { version = "0.2.1", features = ["vendored"]}
+itertools = "0.11.0"
 
 [dependencies.serenity]
 version = "0.11.6"
@@ -39,6 +38,11 @@ features = [
     "temp_cache"
 ]
 
-[features]
-default = ["tenor"]
-anime = ["kitsu"]
+[dependencies.tokio]
+version = "1.32.0"
+features = [
+    "macros",
+    "rt-multi-thread",
+    "signal",
+    "time"
+]
