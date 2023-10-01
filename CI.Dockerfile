@@ -5,4 +5,4 @@ ARG TARGETPLATFORM
 COPY "exec/$TARGETPLATFORM" /spider-bot
 
 EXPOSE 8000
-ENTRYPOINT ["spider-bot"]
+ENTRYPOINT ["/spider-bot"]
