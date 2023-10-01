@@ -1,9 +1,12 @@
-extern crate core;
+#![deny(clippy::all)]
+#![warn(clippy::pedantic)]
 
 use std::env;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use dotenv::dotenv;
+use itertools::Itertools;
 use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
 use serenity::client::{Client, Context, EventHandler};
@@ -16,11 +19,9 @@ use serenity::prelude::*;
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
-use crate::background_tasks::run_periodic_tasks;
 use tenor::models::Gif;
-use tenor::Client as TenorClient;
 
-use crate::cache::MemoryCache;
+use crate::background_tasks::run_periodic_tasks;
 
 mod background_tasks;
 mod cache;
@@ -36,8 +37,9 @@ impl TypeMapKey for ShardManagerContainer {
 
 #[derive(Debug, Clone)]
 struct SpiderBot {
-    gif_cache: MemoryCache<[Gif]>,
-    tenor: TenorClient,
+    gif_cache: cache::Memory<[Gif]>,
+    tenor: tenor::Client,
+    is_loop_running: Arc<AtomicBool>,
 }
 
 #[async_trait]
@@ -66,7 +68,10 @@ impl EventHandler for SpiderBot {
             );
         }
 
-        run_periodic_tasks(self).await;
+        if !self.is_loop_running.load(Ordering::Relaxed) {
+            run_periodic_tasks(self);
+            self.is_loop_running.swap(true, Ordering::Relaxed);
+        }
     }
 
     async fn resume(&self, _: Context, _: ResumedEvent) {
@@ -103,8 +108,9 @@ async fn main() -> anyhow::Result<()> {
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(discord_token, intents)
         .event_handler(SpiderBot {
-            gif_cache: MemoryCache::new(),
+            gif_cache: cache::Memory::new(),
             tenor: tenor::Client::new(tenor_token),
+            is_loop_running: Arc::new(AtomicBool::new(false)),
         })
         .await?;
 
@@ -130,22 +136,12 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn log_slash_commands(result: serenity::Result<Vec<Command>>, guild_id: Option<GuildId>) {
-    match result {
-        Ok(c) => {
-            let commands_registered = c.iter().fold(String::new(), |mut s, cmd| {
-                if !s.is_empty() {
-                    s.push_str(", ");
-                }
-
-                s.push_str(&cmd.name);
-                s
-            });
-
+    match (result, guild_id) {
+        (Ok(c), _) => {
+            let commands_registered = c.iter().map(|cmd| &cmd.name).join(", ");
             info!("Commands registered: {commands_registered}");
         }
-        Err(e) => match guild_id {
-            Some(g) => error!("Error setting slash commands for guild {g}: {e}"),
-            None => error!("Error setting global slash commands: {e}"),
-        },
+        (Err(e), Some(guild)) => error!("Error setting slash commands for guild {guild}: {e}"),
+        (Err(e), None) => error!("Error setting global slash commands: {e}"),
     };
 }
