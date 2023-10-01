@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use chrono::{Datelike, Month, NaiveDate, Utc};
@@ -6,7 +5,7 @@ use rand::distributions::{WeightedError, WeightedIndex};
 use rand::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use serenity::builder::{CreateApplicationCommands, CreateEmbed};
+use serenity::builder::CreateApplicationCommands;
 use serenity::client::Context;
 use serenity::model::application::command::CommandType;
 use serenity::model::prelude::application_command::{
@@ -14,7 +13,6 @@ use serenity::model::prelude::application_command::{
 };
 use serenity::model::prelude::autocomplete::AutocompleteInteraction;
 use serenity::model::prelude::command::CommandOptionType;
-use serenity::model::prelude::User;
 use serenity::prelude::Mentionable;
 use tracing::{error, info, instrument};
 
@@ -23,6 +21,7 @@ use tenor::models::{ContentFilter, Gif, MediaFilter};
 use tenor::Config;
 
 use crate::commands::CommandError;
+use crate::messaging::send_reply;
 use crate::SpiderBot;
 
 #[instrument(skip_all)]
@@ -62,7 +61,7 @@ pub(crate) async fn play(
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
     let mut mention: String = String::from("@here");
-    let mut game_query: &str = "games";
+    let mut game_query: Option<&str> = None;
     for option in &interaction.data.options {
         let Some(resolved) = &option.resolved else {
             continue;
@@ -75,30 +74,20 @@ pub(crate) async fn play(
                 mention = role.mention().to_string();
             }
             ("game", CommandDataOptionValue::String(game)) => {
-                game_query = game;
+                game_query.replace(game);
             }
             _ => (),
         }
     }
 
     interaction.defer(ctx).await?;
-    let gif = get_gif(bot, &game_query.replace(' ', "_"), false).await?;
-    interaction
-        .edit_original_interaction_response(ctx, |response| {
-            response.embed(|embed| {
-                gif_embed(embed, &interaction.user, gif);
-                if game_query == "games" {
-                    embed.description(format_args!("{mention}! Let's play a game!"));
-                } else {
-                    embed.description(format_args!(
-                        "{mention}! Let's play a game of {game_query}!"
-                    ));
-                }
-                embed
-            })
-        })
-        .await?;
-    Ok(())
+    let gif = get_gif(bot, &game_query.unwrap_or("games").replace(' ', "_"), false).await?;
+    let message = if let Some(game) = game_query {
+        format!("{mention}! Let's play some {game}!")
+    } else {
+        format!("{mention}! Let's play a game!")
+    };
+    send_reply(ctx, interaction, [message, gif]).await
 }
 
 #[instrument(skip_all)]
@@ -107,26 +96,18 @@ pub(crate) async fn hurry(
     interaction: &ApplicationCommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
-    let mut username: String = String::from("@here");
+    let mut mention: String = String::from("@here");
     for option in &interaction.data.options {
         if option.name == "user" {
             if let Some(CommandDataOptionValue::User(user, _)) = &option.resolved {
-                username = user.mention().to_string();
+                mention = user.mention().to_string();
             }
         }
     }
 
     interaction.defer(ctx).await?;
     let gif = get_gif(bot, "hurry up", true).await?;
-    interaction
-        .edit_original_interaction_response(ctx, |response| {
-            response.embed(|embed| {
-                gif_embed(embed, &interaction.user, gif)
-                    .description(format_args!("{username}! Hurry up!"))
-            })
-        })
-        .await?;
-    Ok(())
+    send_reply(ctx, interaction, [format!("{mention}! Hurry up!"), gif]).await
 }
 
 #[instrument(skip_all)]
@@ -139,27 +120,7 @@ pub(crate) async fn sleep(
     let collection = SLEEP_GIF_COLLECTION.current(today);
     interaction.defer(ctx).await?;
     let gif = collection.find(bot).await?;
-    interaction
-        .edit_original_interaction_response(ctx, |response| {
-            response.embed(|embed| gif_embed(embed, &interaction.user, gif))
-        })
-        .await?;
-    Ok(())
-}
-
-fn gif_embed<'a, S: ToString>(
-    embed: &'a mut CreateEmbed,
-    user: &User,
-    gif: S,
-) -> &'a mut CreateEmbed {
-    embed.author(|author| {
-        author.name(&user.name).icon_url(
-            user.avatar_url()
-                .as_ref()
-                .unwrap_or(&user.default_avatar_url()),
-        )
-    });
-    embed.image(gif)
+    send_reply(ctx, interaction, [gif]).await
 }
 
 pub(crate) fn register_commands(
@@ -285,13 +246,13 @@ pub(crate) enum GifError {
 struct DayOfMonth(u8, Month);
 
 #[derive(Debug, Copy, Clone)]
-struct DateRange {
+pub(crate) struct DateRange {
     start: DayOfMonth,
     end: DayOfMonth,
 }
 
-impl PartialEq<&NaiveDate> for DateRange {
-    fn eq(&self, other: &&NaiveDate) -> bool {
+impl PartialEq<NaiveDate> for DateRange {
+    fn eq(&self, other: &NaiveDate) -> bool {
         let day = other.day();
         let month = other.month();
         let start_month = self.start.1.number_from_month();
@@ -309,12 +270,11 @@ enum GifQuery {
 }
 
 impl GifQuery {
-    async fn find(&self, bot: &SpiderBot) -> Result<Cow<'static, str>, GifError> {
+    async fn find(&self, bot: &SpiderBot) -> Result<String, GifError> {
         match self {
-            GifQuery::Single(url) => Ok(Cow::Borrowed(url)),
+            GifQuery::Single(url) => Ok((*url).to_string()),
             GifQuery::Random(query) => {
-                let gif = get_gif(bot, query, matches!(self, GifQuery::Random(_))).await?;
-                Ok(Cow::Owned(gif))
+                Ok(get_gif(bot, query, matches!(self, GifQuery::Random(_))).await?)
             }
         }
     }
@@ -333,7 +293,7 @@ impl WeightedQuery {
 struct CollectionData(&'static [WeightedQuery]);
 
 impl CollectionData {
-    async fn find(&self, bot: &SpiderBot) -> Result<Cow<'static, str>, GifError> {
+    async fn find(&self, bot: &SpiderBot) -> Result<String, GifError> {
         let dist = WeightedIndex::new(self.0.iter().map(|q| u32::from(q.0)))?;
         let query = self.0[dist.sample(&mut thread_rng())].1;
         query.find(bot).await
@@ -356,7 +316,7 @@ impl GifCollection {
     fn current(&self, date: NaiveDate) -> &CollectionData {
         self.seasons
             .iter()
-            .find(|s| s.range == &date)
+            .find(|s| s.range == date)
             .map_or(&self.data, |s| &s.data)
     }
 }

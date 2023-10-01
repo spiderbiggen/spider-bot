@@ -27,6 +27,7 @@ mod background_tasks;
 mod cache;
 mod commands;
 mod consts;
+mod messaging;
 mod util;
 
 pub struct ShardManagerContainer;

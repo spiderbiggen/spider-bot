@@ -5,8 +5,6 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use itertools::Itertools;
-use reqwest::Client as ReqwestClient;
-use tracing::debug;
 use url::Url;
 
 use error::Error;
@@ -19,7 +17,7 @@ pub mod models;
 #[derive(Debug, Clone)]
 pub struct Client {
     api_key: Arc<str>,
-    reqwest: ReqwestClient,
+    reqwest: reqwest::Client,
     base_config: Option<Config>,
 }
 
@@ -31,7 +29,7 @@ impl Client {
     pub fn with_config(api_key: String, config: Option<Config>) -> Client {
         Client {
             api_key: api_key.into(),
-            reqwest: ReqwestClient::new(),
+            reqwest: reqwest::Client::new(),
             base_config: config,
         }
     }
@@ -101,8 +99,6 @@ impl Client {
         let query = self.build_query_string(query, config);
 
         let url = Url::parse_with_params("https://tenor.googleapis.com/v2/search", &query)?;
-        debug!("{}", url.as_str());
-
         let result: Response<Vec<Gif>> = self.reqwest.get(url).send().await?.json().await?;
         Ok(result.results)
     }
