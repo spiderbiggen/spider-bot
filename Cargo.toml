@@ -21,7 +21,7 @@ dotenv = "0.15.0"
 futures = "0.3.21"
 rand = "0.8.5"
 thiserror = "1.0.30"
-tracing = "0.1.37"
+tracing = "0.1.39"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 native-tls = { version = "0.2.1", features = ["vendored"]}
 itertools = "0.11.0"
