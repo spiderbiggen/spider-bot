@@ -1,0 +1,1 @@
+SELECT a.* FROM anime_has_subscriptions a WHERE $1 ILIKE a.substring

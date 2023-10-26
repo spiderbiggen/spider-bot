@@ -21,7 +21,7 @@ use tracing_subscriber::prelude::*;
 
 use tenor::models::Gif;
 
-use crate::background_tasks::run_periodic_tasks;
+use crate::background_tasks::start_background_tasks;
 
 mod background_tasks;
 mod cache;
@@ -37,9 +37,16 @@ impl TypeMapKey for ShardManagerContainer {
 }
 
 #[derive(Debug, Clone)]
+struct Config {
+    anime_url: &'static str,
+}
+
+#[derive(Debug, Clone)]
 struct SpiderBot {
+    config: Config,
     gif_cache: cache::Memory<[Gif]>,
     tenor: tenor::Client,
+    pool: otaku::db::Pool,
     is_loop_running: Arc<AtomicBool>,
 }
 
@@ -70,7 +77,7 @@ impl EventHandler for SpiderBot {
         }
 
         if !self.is_loop_running.load(Ordering::Relaxed) {
-            run_periodic_tasks(self);
+            start_background_tasks(self, ctx);
             self.is_loop_running.swap(true, Ordering::Relaxed);
         }
     }
@@ -102,15 +109,21 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let discord_token = Box::leak(Box::new(env::var("DISCORD_TOKEN")?));
+    let discord_token = env::var("DISCORD_TOKEN")?.leak();
+    let anime_url = env::var("ANIME_URL")?.leak();
     let tenor_token = env::var("TENOR_TOKEN")?;
+
+    let pool = otaku::db::connect(env!("CARGO_PKG_NAME")).await?;
+    otaku::db::migrate(&pool).await?;
 
     // Login with a bot token from the environment
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(discord_token, intents)
         .event_handler(SpiderBot {
+            config: Config { anime_url },
             gif_cache: cache::Memory::new(),
             tenor: tenor::Client::new(tenor_token),
+            pool,
             is_loop_running: Arc::new(AtomicBool::new(false)),
         })
         .await?;
@@ -130,9 +143,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // start listening for events by starting a single shard
-    if let Err(err) = client.start().await {
-        error!(error = ?err, "An error occurred while running the client");
-    }
+    client.start().await?;
     Ok(())
 }
 

@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.0
+
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -26,7 +27,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.7.0
         with:
-          prefix-key: "tests"
           cache-all-crates: true
 
       - name: Check cargo fmt
@@ -36,6 +36,7 @@ jobs:
         uses: ClementTsang/cargo-action@v0.0.6
         with:
           command: test
+          use-cross: true
           args: --no-run --locked
         env:
           RUST_BACKTRACE: full
@@ -44,6 +45,7 @@ jobs:
         uses: ClementTsang/cargo-action@v0.0.6
         with:
           command: test
+          use-cross: true
           args: --no-fail-fast
         env:
           RUST_BACKTRACE: full
@@ -52,6 +54,7 @@ jobs:
         uses: ClementTsang/cargo-action@v0.0.6
         with:
           command: clippy
+          use-cross: true
           args: --all-targets --workspace -- -D warnings
         env:
           RUST_BACKTRACE: full
