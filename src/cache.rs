@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 
 use crate::consts;
 
@@ -33,35 +34,41 @@ impl<T: ?Sized> Memory<T> {
         Self::default()
     }
 
-    pub fn get(&self, key: &str) -> Option<Arc<T>> {
-        let map = self.map.read().unwrap();
+    pub async fn get(&self, key: &str) -> Option<Arc<T>> {
+        let map = self.map.read().await;
         map.get(key)
             .filter(|&&Key(instant, _)| instant >= Instant::now())
             .map(|Key(_, value)| value.clone())
     }
 
-    pub fn insert(&self, key: String, value: impl Into<Arc<T>>) {
-        self.insert_with_duration(key, value, consts::CACHE_LIFETIME);
+    pub async fn insert(&self, key: String, value: impl Into<Arc<T>>) {
+        self.insert_with_duration(key, value, consts::CACHE_LIFETIME)
+            .await;
     }
 
-    pub fn insert_with_duration(&self, key: String, value: impl Into<Arc<T>>, duration: Duration) {
+    pub async fn insert_with_duration(
+        &self,
+        key: String,
+        value: impl Into<Arc<T>>,
+        duration: Duration,
+    ) {
         let expiration = Instant::now() + duration;
-        self.insert_with_expiration(key, value, expiration);
+        self.insert_with_expiration(key, value, expiration).await;
     }
 
-    pub fn insert_with_expiration(
+    pub async fn insert_with_expiration(
         &self,
         key: String,
         value: impl Into<Arc<T>>,
         expiration: Instant,
     ) {
-        let mut map = self.map.write().unwrap();
+        let mut map = self.map.write().await;
         map.insert(key, Key(expiration, value.into()));
     }
 
-    pub fn trim(&self) {
+    pub async fn trim(&self) {
         let now = Instant::now();
-        let mut map = self.map.write().unwrap();
+        let mut map = self.map.write().await;
         map.retain(|_, &mut Key(expiration, _)| expiration <= now);
     }
 }

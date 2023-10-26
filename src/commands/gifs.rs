@@ -167,7 +167,7 @@ pub(crate) fn register_commands(
 }
 
 async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Gif]>, GifError> {
-    if let Some(gifs) = bot.gif_cache.get(query) {
+    if let Some(gifs) = bot.gif_cache.get(query).await {
         info!("Found \"{query}\" gifs in cache ");
         return Ok(gifs);
     }
@@ -176,7 +176,7 @@ async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Gif
         .media_filter(vec![MediaFilter::Gif])
         .random(random);
     let gifs: Arc<[Gif]> = bot.tenor.search(query, Some(&config)).await?.into();
-    bot.gif_cache.insert(query.into(), gifs.clone());
+    bot.gif_cache.insert(query.into(), gifs.clone()).await;
     info!("Put \"{query}\" gifs into cache ");
     Ok(gifs)
 }

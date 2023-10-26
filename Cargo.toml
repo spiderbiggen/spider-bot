@@ -8,10 +8,13 @@ description = "Discord bot for the 'Turtle Force' discord"
 [workspace]
 members = [
     "tenor",
+    "otaku",
+    "proto",
 ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+otaku = { path = "otaku" }
 tenor = { path = "tenor" }
 
 async-trait = "0.1.52"
@@ -23,19 +26,21 @@ rand = "0.8.5"
 thiserror = "1.0.30"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-native-tls = { version = "0.2.1", features = ["vendored"]}
 itertools = "0.11.0"
 
 [dependencies.serenity]
-version = "0.11.6"
+version = "0.11.7"
 default-features = false
 features = [
+    "builder",
+    "cache",
+    "chrono",
     "client",
     "gateway",
-    "native_tls_backend",
     "model",
-    "cache",
-    "temp_cache"
+    "http",
+    "utils",
+    "rustls_backend"
 ]
 
 [dependencies.tokio]
@@ -46,3 +51,10 @@ features = [
     "signal",
     "time"
 ]
+
+[profile.dev.package.sqlx-macros]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+strip = "symbols"

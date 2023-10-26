@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use strum_macros::{EnumString, IntoStaticStr};

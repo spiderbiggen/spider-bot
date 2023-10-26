@@ -1,5 +1,5 @@
-#[macro_use]
-extern crate serde;
+#![deny(clippy::all)]
+#![warn(clippy::pedantic)]
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -22,10 +22,12 @@ pub struct Client {
 }
 
 impl Client {
+    #[must_use]
     pub fn new(api_key: String) -> Client {
         Self::with_config(api_key, None)
     }
 
+    #[must_use]
     pub fn with_config(api_key: String, config: Option<Config>) -> Client {
         Client {
             api_key: api_key.into(),
@@ -95,6 +97,11 @@ impl Client {
         params
     }
 
+    /// Search for gifs with the given query.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when tenor cannot be reached or an error is returned from the api.
     pub async fn search(&self, query: &str, config: Option<&Config>) -> Result<Vec<Gif>, Error> {
         let query = self.build_query_string(query, config);
 
@@ -120,40 +127,48 @@ pub struct Config {
 }
 
 impl Config {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn country(mut self, country: String) -> Self {
         self.country = Some(country);
         self
     }
 
+    #[must_use]
     pub fn locale(mut self, locale: String) -> Self {
         self.locale = Some(locale);
         self
     }
 
+    #[must_use]
     pub fn content_filter(mut self, content_filter: ContentFilter) -> Self {
         self.content_filter = Some(content_filter);
         self
     }
 
+    #[must_use]
     pub fn media_filter(mut self, media_filter: Vec<MediaFilter>) -> Self {
         self.media_filter = Some(media_filter);
         self
     }
 
+    #[must_use]
     pub fn random(mut self, random: bool) -> Self {
         self.random = Some(random);
         self
     }
 
+    #[must_use]
     pub fn limit(mut self, limit: u8) -> Self {
         self.limit = Some(limit);
         self
     }
 
+    #[must_use]
     pub fn position(mut self, position: String) -> Self {
         self.position = Some(position);
         self
