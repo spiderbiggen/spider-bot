@@ -1,0 +1,21 @@
+[package]
+name = "otaku"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+proto = { path = "../proto" }
+
+chrono = "0.4.31"
+futures-util = "0.3.28"
+prost-types = "0.12.1"
+thiserror = "1.0.50"
+tokio = "1"
+tonic = { version = "0.10.2", features = ["gzip"] }
+tracing = "0.1.40"
+
+[dependencies.sqlx]
+version = "0.7.0"
+features = ["postgres", "runtime-tokio-rustls", "chrono", "uuid"]

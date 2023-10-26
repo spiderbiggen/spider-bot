@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT a.* FROM anime_has_subscriptions a WHERE $1 ILIKE a.substring",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "guild_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "channel_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "substring",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "anime_id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "4e6204f423e334cee4f6a6a0f88f98cfbc24cea4053464feede7f86a10a740eb"
+}
