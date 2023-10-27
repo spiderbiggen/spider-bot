@@ -1,6 +1,6 @@
 [package]
 name = "spider-bot"
-version = "0.1.6"
+version = "0.1.7-rc02"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2021"
 description = "Discord bot for the 'Turtle Force' discord"
@@ -21,6 +21,7 @@ async-trait = "0.1.52"
 anyhow = "1.0.75"
 chrono = "0.4.19"
 dotenv = "0.15.0"
+envmnt = "0.10.4"
 futures = "0.3.21"
 rand = "0.8.5"
 thiserror = "1.0.30"

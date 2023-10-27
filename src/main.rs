@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let discord_token = env::var("DISCORD_TOKEN")?.leak();
-    let anime_url = env::var("ANIME_URL")?.leak();
+    let anime_url = resolve_env("ANIME_URL")?.leak();
     let tenor_token = env::var("TENOR_TOKEN")?;
 
     let pool = otaku::db::connect(env!("CARGO_PKG_NAME")).await?;
@@ -156,4 +156,14 @@ fn log_slash_commands(result: serenity::Result<Vec<Command>>, guild_id: Option<G
         (Err(e), Some(guild)) => error!("Error setting slash commands for guild {guild}: {e}"),
         (Err(e), None) => error!("Error setting global slash commands: {e}"),
     };
+}
+
+fn resolve_env(key: &str) -> anyhow::Result<String> {
+    use envmnt::{ExpandOptions, ExpansionType};
+    let key = env::var(key)?;
+    let options = ExpandOptions {
+        expansion_type: Some(ExpansionType::All),
+        default_to_empty: true,
+    };
+    Ok(envmnt::expand(&key, Some(options)))
 }
