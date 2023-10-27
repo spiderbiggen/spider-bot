@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 #![warn(clippy::pedantic)]
 
+use std::cmp::min;
 use std::fmt::Display;
 use std::num::ParseIntError;
 use std::time::Duration;
@@ -18,6 +19,7 @@ use proto::api::v1::downloads_client::DownloadsClient;
 
 pub mod db;
 
+const MAX_BACKOFF: Duration = Duration::from_secs(30);
 const BACKOFF_INTERVAL: Duration = Duration::from_millis(125);
 const RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -106,7 +108,7 @@ async fn connect_with_backoff(endpoint: &str) -> DownloadsClient<tonic::transpor
                     backoff.as_secs_f32()
                 );
                 tokio::time::sleep(backoff).await;
-                backoff *= 2;
+                backoff = min(backoff * 2, MAX_BACKOFF);
             }
         }
     }
