@@ -84,7 +84,11 @@ pub enum Subscriber {
     Channel { channel_id: u64, guild_id: u64 },
 }
 
-pub async fn subscribe(endpoint: &str, pool: Pool<Postgres>, sender: Sender<DownloadCollection>) {
+pub async fn subscribe(
+    endpoint: &'static str,
+    pool: Pool<Postgres>,
+    sender: Sender<DownloadCollection>,
+) {
     loop {
         let client = connect_with_backoff(endpoint).await;
         if let Err(err) = handle_stream(client, pool.clone(), sender.clone()).await {
@@ -94,11 +98,13 @@ pub async fn subscribe(endpoint: &str, pool: Pool<Postgres>, sender: Sender<Down
     }
 }
 
-async fn connect_with_backoff(endpoint: &str) -> DownloadsClient<tonic::transport::Channel> {
+async fn connect_with_backoff(
+    endpoint: &'static str,
+) -> DownloadsClient<tonic::transport::Channel> {
     let mut backoff = BACKOFF_INTERVAL;
 
     loop {
-        match DownloadsClient::connect("http://localhost:8000").await {
+        match DownloadsClient::connect(endpoint).await {
             Ok(client) => return client.accept_compressed(CompressionEncoding::Gzip),
             Err(err) => {
                 error!(
