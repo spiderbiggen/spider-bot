@@ -1,1 +1,1 @@
-SELECT a.* FROM anime_has_subscriptions a WHERE $1 ILIKE a.substring
+SELECT a.guild_id, a.channel_id FROM anime_has_subscriptions a WHERE $1 ILIKE a.substring
