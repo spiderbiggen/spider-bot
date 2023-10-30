@@ -1,6 +1,6 @@
 [package]
 name = "spider-bot"
-version = "0.1.7-rc03"
+version = "0.1.7-rc04"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2021"
 description = "Discord bot for the 'Turtle Force' discord"
