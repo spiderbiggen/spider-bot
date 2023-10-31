@@ -7,15 +7,15 @@ use std::sync::Arc;
 
 use dotenv::dotenv;
 use itertools::Itertools;
-use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
 use serenity::client::{Client, Context, EventHandler};
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::command::Command;
 use serenity::model::prelude::GuildId;
-use serenity::model::prelude::{Interaction, ResumedEvent};
+use serenity::model::prelude::Interaction;
 use serenity::prelude::GatewayIntents;
 use serenity::prelude::*;
+use serenity::{async_trait, CacheAndHttp};
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
@@ -82,10 +82,6 @@ impl EventHandler for SpiderBot {
         }
     }
 
-    async fn resume(&self, _: Context, _: ResumedEvent) {
-        info!("Resumed");
-    }
-
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::ApplicationCommand(command) => {
@@ -144,6 +140,10 @@ async fn main() -> anyhow::Result<()> {
 
     // start listening for events by starting a single shard
     client.start().await?;
+
+    #[cfg(debug_assertions)]
+    remove_guild_commands(client.cache_and_http).await;
+
     Ok(())
 }
 
@@ -166,4 +166,29 @@ fn resolve_env(key: &str) -> anyhow::Result<String> {
         default_to_empty: true,
     };
     Ok(envmnt::expand(&key, Some(options)))
+}
+
+#[cfg(debug_assertions)]
+async fn remove_guild_commands(cache_and_http: Arc<CacheAndHttp>) {
+    let cache = cache_and_http.cache.clone();
+    let http = cache_and_http.http.clone();
+    for guild in cache.guilds() {
+        let command_ids = guild.get_application_commands(&http).await;
+        match command_ids {
+            Ok(ids) => {
+                for command in ids {
+                    let result = guild.delete_application_command(&http, command.id).await;
+                    if let Err(err) = result {
+                        error!(
+                            "Could not delete command {} for guild {guild}: {err:?}",
+                            command.name
+                        );
+                    }
+                }
+            }
+            Err(err) => {
+                error!("Could not get command ids for guild {guild}: {err:?}");
+            }
+        }
+    }
 }
