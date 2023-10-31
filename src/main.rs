@@ -2,7 +2,6 @@
 #![warn(clippy::pedantic)]
 
 use std::env;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use dotenv::dotenv;
@@ -21,7 +20,7 @@ use tracing_subscriber::prelude::*;
 
 use tenor::models::Gif;
 
-use crate::background_tasks::start_background_tasks;
+use crate::background_tasks::{start_anime_subscription, start_cache_trim};
 
 mod background_tasks;
 mod cache;
@@ -37,17 +36,10 @@ impl TypeMapKey for ShardManagerContainer {
 }
 
 #[derive(Debug, Clone)]
-struct Config {
-    anime_url: &'static str,
-}
-
-#[derive(Debug, Clone)]
 struct SpiderBot {
-    config: Config,
     gif_cache: cache::Memory<[Gif]>,
     tenor: tenor::Client,
     pool: otaku::db::Pool,
-    is_loop_running: Arc<AtomicBool>,
 }
 
 #[async_trait]
@@ -55,15 +47,14 @@ impl EventHandler for SpiderBot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("Connected as {}", ready.user.name);
         if cfg!(debug_assertions) {
-            for guild in ready.guilds {
+            for guild_id in ready.guilds.iter().map(|guild| guild.id) {
                 log_slash_commands(
-                    guild
-                        .id
+                    guild_id
                         .set_application_commands(&ctx, |bot_commands| {
                             commands::register_commands(bot_commands)
                         })
                         .await,
-                    Some(guild.id),
+                    Some(guild_id),
                 );
             }
         } else {
@@ -74,11 +65,6 @@ impl EventHandler for SpiderBot {
                 .await,
                 None,
             );
-        }
-
-        if !self.is_loop_running.load(Ordering::Relaxed) {
-            start_background_tasks(self, ctx);
-            self.is_loop_running.swap(true, Ordering::Relaxed);
         }
     }
 
@@ -111,18 +97,20 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = otaku::db::connect(env!("CARGO_PKG_NAME")).await?;
     otaku::db::migrate(&pool).await?;
-
     // Login with a bot token from the environment
+    let bot = SpiderBot {
+        gif_cache: cache::Memory::new(),
+        tenor: tenor::Client::new(tenor_token),
+        pool,
+    };
+
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(discord_token, intents)
-        .event_handler(SpiderBot {
-            config: Config { anime_url },
-            gif_cache: cache::Memory::new(),
-            tenor: tenor::Client::new(tenor_token),
-            pool,
-            is_loop_running: Arc::new(AtomicBool::new(false)),
-        })
+        .event_handler(bot.clone())
         .await?;
+
+    start_cache_trim(bot.gif_cache.clone());
+    start_anime_subscription(bot.pool, anime_url, client.cache_and_http.clone());
 
     {
         let mut data = client.data.write().await;
