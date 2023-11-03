@@ -1,14 +1,17 @@
 use std::sync::Arc;
 
 use serenity::builder::CreateEmbed;
+use serenity::cache::Cache;
 use serenity::http::Http;
+use serenity::model::channel::Channel;
+use serenity::model::id::GuildId;
 use serenity::model::prelude::ChannelId;
 use serenity::CacheAndHttp;
 use tokio::sync::mpsc::{channel, Receiver};
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 use otaku::db::Pool;
-use otaku::{Download, DownloadCollection, Subscriber};
+use otaku::{Download, DownloadCollection, Subcribed, Subscriber};
 use tenor::models::Gif;
 
 use crate::cache;
@@ -47,17 +50,32 @@ pub(crate) fn start_anime_subscription(
     tokio::spawn(embed_sender(discord, rx));
 }
 
-async fn embed_sender(discord: Arc<CacheAndHttp>, mut rx: Receiver<DownloadCollection>) {
+async fn embed_sender(discord: Arc<CacheAndHttp>, mut rx: Receiver<Subcribed<DownloadCollection>>) {
     loop {
         if let Some(message) = rx.recv().await {
-            let channel_ids = channel_ids(&message.subscribers);
-            let title = message.episode.to_string();
-            info!(r#"Notifiying channels for: "{title}"#,);
-            let embed = create_embed(&title, message.downloads);
+            tokio::spawn(process_downloads_subscription(discord.clone(), message));
+        }
+    }
+}
 
-            for channel_id in channel_ids {
-                tokio::spawn(send_embed(discord.http.clone(), channel_id, embed.clone()));
-            }
+#[instrument(skip_all, fields(title))]
+async fn process_downloads_subscription(
+    discord: Arc<CacheAndHttp>,
+    message: Subcribed<DownloadCollection>,
+) {
+    let channel_ids = channel_ids(&message.subscribers);
+
+    let title = message.content.episode.to_string();
+    tracing::Span::current().record("title", &title);
+    let embed = create_embed(&title, message.content.downloads);
+
+    info!("Notifying {} channels", channel_ids.len());
+    for channel_id in channel_ids {
+        if let Err(err) = send_embed(&discord.http, channel_id, embed.clone()).await {
+            error!(
+                "Failed to send embed to `{}`: {err}",
+                format_channel(&discord.cache, channel_id),
+            );
         }
     }
 }
@@ -76,24 +94,42 @@ fn create_embed(title: &str, downloads: Vec<Download>) -> CreateEmbed {
     embed
 }
 
-fn channel_ids(subscribers: &[Subscriber]) -> impl Iterator<Item = ChannelId> + '_ {
-    subscribers
-        .iter()
-        .filter_map(|s| match s {
-            Subscriber::User(_) => None,
-            Subscriber::Channel { channel_id, .. } => Some(channel_id),
-        })
-        .map(|&id| ChannelId(id))
+fn channel_ids(subscribers: &[Subscriber]) -> impl ExactSizeIterator<Item = ChannelId> + '_ {
+    subscribers.iter().map(|s| match s {
+        Subscriber::User(id) => ChannelId(*id),
+        Subscriber::Channel { channel_id, .. } => ChannelId(*channel_id),
+    })
 }
 
-#[instrument(skip(http), err(Debug))]
 async fn send_embed(
-    http: Arc<Http>,
+    http: &Http,
     channel_id: ChannelId,
     embed: CreateEmbed,
 ) -> Result<(), serenity::Error> {
     channel_id
-        .send_message(http, |m| m.set_embed(embed.clone()))
+        .send_message(http, |m| m.set_embed(embed))
         .await?;
     Ok(())
+}
+
+fn format_channel(cache: &Cache, channel_id: ChannelId) -> String {
+    match channel_id.to_channel_cached(cache) {
+        Some(Channel::Guild(channel)) => {
+            let guild_id = format_guild(cache, channel.guild_id);
+            format!("{} #{}", guild_id, channel.name)
+        }
+        Some(Channel::Category(category)) => {
+            let guild_id = format_guild(cache, category.guild_id);
+            format!("{} #{}", guild_id, category.name)
+        }
+        Some(Channel::Private(channel)) => channel.name(),
+        _ => channel_id.to_string(),
+    }
+}
+
+fn format_guild(cache: &Cache, guild_id: GuildId) -> String {
+    match guild_id.name(cache) {
+        Some(name) => name,
+        None => guild_id.to_string(),
+    }
 }
