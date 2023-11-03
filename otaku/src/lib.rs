@@ -172,6 +172,17 @@ async fn process_message(
     incoming_message: proto::api::v1::DownloadCollection,
 ) {
     debug!("Got message: {incoming_message:?}");
+
+    // Filter incomplete messages
+    if !incoming_message
+        .downloads
+        .iter()
+        .any(|download| download.resolution == "1080p")
+    {
+        debug!("Message was incomplete, skipping");
+        return;
+    }
+
     let collection: DownloadCollection = match incoming_message.try_into() {
         Ok(collection) => collection,
         Err(err) => {
