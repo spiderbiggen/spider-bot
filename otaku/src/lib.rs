@@ -11,9 +11,10 @@ use prost_types::Timestamp;
 use sqlx::pool::Pool;
 use sqlx::types::chrono::{DateTime, Utc};
 use sqlx::Postgres;
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
 use tonic::codec::CompressionEncoding;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, instrument};
 
 use proto::api::v1::downloads_client::DownloadsClient;
 
@@ -26,13 +27,39 @@ const RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    Sqlx(#[from] sqlx::Error),
+    Subscriptions(#[from] SubscriptionError),
+    #[error(transparent)]
+    FromGrpc(#[from] ConversionError),
+    #[error(transparent)]
+    Sender(#[from] SendError<DownloadCollection>),
+}
+
+#[derive(thiserror::Error, Debug)]
+enum ConnectionError {
+    #[error(transparent)]
+    Status(#[from] tonic::Status),
+    #[error("The connection was closed by the remote")]
+    Closed,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ConversionError {
     #[error(transparent)]
     ParseInt(#[from] ParseIntError),
     #[error("Missing required field: {0}")]
     MissingField(&'static str),
     #[error("Encounter invalid timestamp")]
     InvalidTimeStamp(Timestamp),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum SubscriptionError {
+    #[error(transparent)]
+    Sqlx(#[from] sqlx::Error),
+    #[error("{0} for {1}")]
+    ParseInt(#[source] ParseIntError, &'static str),
+    #[error("Found no subscriptions")]
+    Empty,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -75,6 +102,11 @@ pub struct Download {
 pub struct DownloadCollection {
     pub episode: Episode,
     pub downloads: Vec<Download>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Subcribed<T: Clone + PartialEq> {
+    pub content: T,
     pub subscribers: Vec<Subscriber>,
 }
 
@@ -87,7 +119,7 @@ pub enum Subscriber {
 pub async fn subscribe(
     endpoint: &'static str,
     pool: Pool<Postgres>,
-    sender: Sender<DownloadCollection>,
+    sender: Sender<Subcribed<DownloadCollection>>,
 ) {
     loop {
         let client = connect_with_backoff(endpoint).await;
@@ -108,9 +140,7 @@ async fn connect_with_backoff(
             Ok(client) => return client.accept_compressed(CompressionEncoding::Gzip),
             Err(err) => {
                 error!(
-                    "Failed to connect to {} with error: {}. Retrying in {:.2} seconds",
-                    endpoint,
-                    err,
+                    "Failed to connect to {endpoint} with error: {err}. Retrying in {:.2} seconds",
                     backoff.as_secs_f32()
                 );
                 tokio::time::sleep(backoff).await;
@@ -120,73 +150,90 @@ async fn connect_with_backoff(
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-enum ConnectionError {
-    #[error(transparent)]
-    Status(#[from] tonic::Status),
-}
-
 async fn handle_stream(
     mut client: DownloadsClient<tonic::transport::Channel>,
     pool: Pool<Postgres>,
-    sender: Sender<DownloadCollection>,
+    sender: Sender<Subcribed<DownloadCollection>>,
 ) -> Result<(), ConnectionError> {
     let mut stream = client.subscribe(()).await?;
     info!("Connected to grpc service");
     loop {
-        if let Some(message) = stream.get_mut().message().await? {
-            debug!("Got message: {message:?}");
-            let pool = pool.clone();
-            let sender = sender.clone();
-
-            if let Err(err) = send_message(pool, sender, message).await {
-                error!("Failed to process incoming message: {err}");
-            }
-        }
+        let Some(incoming_message) = stream.get_mut().message().await? else {
+            return Err(ConnectionError::Closed);
+        };
+        process_message(pool.clone(), sender.clone(), incoming_message).await;
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-enum SendError {
-    #[error(transparent)]
-    Internal(#[from] Error),
-    #[error(transparent)]
-    Sender(#[from] tokio::sync::mpsc::error::SendError<DownloadCollection>),
+#[instrument(skip_all)]
+async fn process_message(
+    pool: Pool<Postgres>,
+    sender: Sender<Subcribed<DownloadCollection>>,
+    incoming_message: proto::api::v1::DownloadCollection,
+) {
+    debug!("Got message: {incoming_message:?}");
+    let collection: DownloadCollection = match incoming_message.try_into() {
+        Ok(collection) => collection,
+        Err(err) => {
+            error!("Failed to convert message to DownloadCollection: {err}");
+            return;
+        }
+    };
+
+    let Ok(subscribers) = get_subscribers(pool, &collection.episode.title).await else {
+        return;
+    };
+
+    let outbound_message = Subcribed {
+        content: collection,
+        subscribers,
+    };
+    if let Err(err) = sender.send(outbound_message).await {
+        error!("Failed to forward incoming message: {err}");
+    }
 }
 
-async fn send_message(
+#[instrument(skip(pool))]
+async fn get_subscribers(
     pool: Pool<Postgres>,
-    sender: Sender<DownloadCollection>,
-    message: proto::api::v1::DownloadCollection,
-) -> Result<(), SendError> {
-    let mut collection: DownloadCollection = message.try_into()?;
-    let title = &collection.episode.title;
+    title: &str,
+) -> Result<Vec<Subscriber>, SubscriptionError> {
     let channels: Vec<_> = sqlx::query_file!("queries/find_subscribed_channels.sql", title)
         .fetch(&pool)
-        .err_into::<Error>()
+        .err_into::<SubscriptionError>()
         .and_then(|record| async move {
             Ok(Subscriber::Channel {
-                channel_id: record.channel_id.parse()?,
-                guild_id: record.guild_id.parse()?,
+                channel_id: record
+                    .channel_id
+                    .parse()
+                    .map_err(|err| SubscriptionError::ParseInt(err, "channel_id"))?,
+                guild_id: record
+                    .guild_id
+                    .parse()
+                    .map_err(|err| SubscriptionError::ParseInt(err, "guild_id"))?,
             })
         })
         .try_collect()
         .await?;
 
     if channels.is_empty() {
-        return Ok(());
+        let error = SubscriptionError::Empty;
+        info!("{error}");
+        return Err(error);
     }
-    collection.subscribers = channels;
-    sender.send(collection).await?;
-    Ok(())
+    Ok(channels)
 }
 
 impl TryFrom<proto::api::v1::Episode> for Episode {
-    type Error = Error;
+    type Error = ConversionError;
 
     fn try_from(value: proto::api::v1::Episode) -> Result<Self, Self::Error> {
-        let created_at_timestamp = value.created_at.ok_or(Error::MissingField("created_at"))?;
-        let update_at_timestamp = value.updated_at.ok_or(Error::MissingField("updated_at"))?;
+        let created_at_timestamp = value
+            .created_at
+            .ok_or(ConversionError::MissingField("created_at"))?;
+        let update_at_timestamp = value
+            .updated_at
+            .ok_or(ConversionError::MissingField("updated_at"))?;
         Ok(Episode {
             created_at: from_timestamp(created_at_timestamp)?,
             updated_at: from_timestamp(update_at_timestamp)?,
@@ -200,12 +247,12 @@ impl TryFrom<proto::api::v1::Episode> for Episode {
 }
 
 impl TryFrom<proto::api::v1::Download> for Download {
-    type Error = Error;
+    type Error = ConversionError;
 
     fn try_from(value: proto::api::v1::Download) -> Result<Self, Self::Error> {
         let published_date_timestamp = value
             .published_date
-            .ok_or(Error::MissingField("published_date"))?;
+            .ok_or(ConversionError::MissingField("published_date"))?;
         Ok(Download {
             published_date: from_timestamp(published_date_timestamp)?,
             resolution: value.resolution,
@@ -217,26 +264,25 @@ impl TryFrom<proto::api::v1::Download> for Download {
 }
 
 impl TryFrom<proto::api::v1::DownloadCollection> for DownloadCollection {
-    type Error = Error;
+    type Error = ConversionError;
 
     fn try_from(value: proto::api::v1::DownloadCollection) -> Result<Self, Self::Error> {
         Ok(DownloadCollection {
             episode: value
                 .episode
-                .ok_or(Error::MissingField("episode"))?
+                .ok_or(ConversionError::MissingField("episode"))?
                 .try_into()?,
             downloads: value
                 .downloads
                 .into_iter()
                 .map(Download::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
-            subscribers: vec![],
         })
     }
 }
 
 #[allow(clippy::cast_sign_loss)]
-fn from_timestamp(timestamp: Timestamp) -> Result<DateTime<Utc>, Error> {
+fn from_timestamp(timestamp: Timestamp) -> Result<DateTime<Utc>, ConversionError> {
     DateTime::from_timestamp(timestamp.seconds, timestamp.nanos as u32)
-        .ok_or(Error::InvalidTimeStamp(timestamp))
+        .ok_or(ConversionError::InvalidTimeStamp(timestamp))
 }
