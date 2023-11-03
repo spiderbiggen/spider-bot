@@ -1910,7 +1910,7 @@ dependencies = [
 
 [[package]]
 name = "spider-bot"
-version = "0.1.7-rc04"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "async-trait",
