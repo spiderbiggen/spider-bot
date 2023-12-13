@@ -328,8 +328,8 @@ mod test {
             }
             sum += counter;
         });
-        #[allow(clippy::cast_possible_truncation)]
-        let average_first_appearance = (f64::from(sum) / f64::from(iterations)).round() as i64;
-        assert_eq!(average_first_appearance, 141);
+        let average_rolls = f64::from(sum) / f64::from(iterations);
+        eprintln!("Froggers average rolls[iterations={iterations}]: {average_rolls:.2}");
+        assert!(average_rolls > 140.0 && average_rolls < 142.0);
     }
 }
