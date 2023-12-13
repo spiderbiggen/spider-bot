@@ -1,6 +1,6 @@
 [package]
 name = "spider-bot"
-version = "0.1.9"
+version = "0.1.10"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2021"
 description = "Discord bot for the 'Turtle Force' discord"
@@ -20,6 +20,9 @@ all = "deny"
 pedantic = "warn"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lints]
+workspace = true
+
 [dependencies]
 otaku = { path = "otaku" }
 tenor = { path = "tenor" }
@@ -37,7 +40,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 itertools = "0.12.0"
 
 [dependencies.serenity]
-version = "0.11.7"
+version = "0.12.0"
 default-features = false
 features = [
     "builder",

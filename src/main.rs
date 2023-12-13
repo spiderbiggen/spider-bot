@@ -1,20 +1,14 @@
-#![deny(clippy::all)]
-#![warn(clippy::pedantic)]
-
 use std::env;
 use std::sync::Arc;
 
 use dotenv::dotenv;
 use itertools::Itertools;
-use serenity::client::bridge::gateway::ShardManager;
+use serenity::all::{
+    Cache, Command, GatewayIntents, GuildId, Http, Interaction, Ready, ShardManager,
+};
+use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
-use serenity::model::gateway::Ready;
-use serenity::model::prelude::command::Command;
-use serenity::model::prelude::GuildId;
-use serenity::model::prelude::Interaction;
-use serenity::prelude::GatewayIntents;
 use serenity::prelude::*;
-use serenity::{async_trait, CacheAndHttp};
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
@@ -32,7 +26,7 @@ mod util;
 pub struct ShardManagerContainer;
 
 impl TypeMapKey for ShardManagerContainer {
-    type Value = Arc<Mutex<ShardManager>>;
+    type Value = Arc<ShardManager>;
 }
 
 #[derive(Debug, Clone)]
@@ -46,23 +40,18 @@ struct SpiderBot {
 impl EventHandler for SpiderBot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("Connected as {}", ready.user.name);
+        let mut create_commands = vec![];
+        commands::register_commands(&mut create_commands);
         if cfg!(debug_assertions) {
             for guild_id in ready.guilds.iter().map(|guild| guild.id) {
                 log_slash_commands(
-                    guild_id
-                        .set_application_commands(&ctx, |bot_commands| {
-                            commands::register_commands(bot_commands)
-                        })
-                        .await,
+                    guild_id.set_commands(&ctx, create_commands.clone()).await,
                     Some(guild_id),
                 );
             }
         } else {
             log_slash_commands(
-                Command::set_global_application_commands(&ctx, |bot_commands| {
-                    commands::register_commands(bot_commands)
-                })
-                .await,
+                Command::set_global_commands(&ctx, create_commands).await,
                 None,
             );
         }
@@ -70,15 +59,9 @@ impl EventHandler for SpiderBot {
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
-            Interaction::ApplicationCommand(command) => {
-                commands::interaction(command, &ctx, self).await;
-            }
-            Interaction::Autocomplete(command) => {
-                commands::autocomplete(command, &ctx).await;
-            }
-            _ => {
-                error!("Unsupported interaction type received: {:?}", interaction);
-            }
+            Interaction::Command(command) => commands::interaction(command, &ctx, self).await,
+            Interaction::Autocomplete(command) => commands::autocomplete(command, &ctx).await,
+            _ => error!("Unsupported interaction type received: {:?}", interaction),
         }
     }
 }
@@ -110,7 +93,12 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     start_cache_trim(bot.gif_cache.clone());
-    start_anime_subscription(bot.pool, anime_url, client.cache_and_http.clone());
+    start_anime_subscription(
+        bot.pool,
+        anime_url,
+        client.cache.clone(),
+        client.http.clone(),
+    );
 
     {
         let mut data = client.data.write().await;
@@ -123,14 +111,14 @@ async fn main() -> anyhow::Result<()> {
         tokio::signal::ctrl_c()
             .await
             .expect("Could not register ctrl+c handler");
-        shard_manager.lock().await.shutdown_all().await;
+        shard_manager.shutdown_all().await;
     });
 
     // start listening for events by starting a single shard
     client.start().await?;
 
     #[cfg(debug_assertions)]
-    remove_guild_commands(client.cache_and_http).await;
+    remove_guild_commands(&client.cache, &client.http).await;
 
     Ok(())
 }
@@ -157,15 +145,13 @@ fn resolve_env(key: &str) -> anyhow::Result<String> {
 }
 
 #[cfg(debug_assertions)]
-async fn remove_guild_commands(cache_and_http: Arc<CacheAndHttp>) {
-    let cache = cache_and_http.cache.clone();
-    let http = cache_and_http.http.clone();
+async fn remove_guild_commands(cache: &Cache, http: &Http) {
     for guild in cache.guilds() {
-        let command_ids = guild.get_application_commands(&http).await;
+        let command_ids = guild.get_commands(&http).await;
         match command_ids {
             Ok(ids) => {
                 for command in ids {
-                    let result = guild.delete_application_command(&http, command.id).await;
+                    let result = guild.delete_command(&http, command.id).await;
                     if let Err(err) = result {
                         error!(
                             "Could not delete command {} for guild {guild}: {err:?}",

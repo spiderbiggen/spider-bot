@@ -1,6 +1,3 @@
-#![deny(clippy::all)]
-#![warn(clippy::pedantic)]
-
 use std::borrow::Cow;
 use std::sync::Arc;
 

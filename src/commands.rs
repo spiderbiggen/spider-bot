@@ -1,8 +1,9 @@
-use serenity::builder::CreateApplicationCommands;
-use serenity::model::prelude::application_command::ApplicationCommandInteraction;
-use serenity::model::prelude::autocomplete::AutocompleteInteraction;
+use serenity::all::{
+    Color, CommandInteraction, CreateEmbed, CreateInteractionResponse,
+    CreateInteractionResponseMessage,
+};
+use serenity::all::{CreateAutocompleteResponse, CreateCommand};
 use serenity::prelude::Context;
-use serenity::utils::Color;
 use tracing::error;
 
 use crate::commands::gifs::GifError;
@@ -18,19 +19,11 @@ pub(crate) enum CommandError {
     Serenity(#[from] serenity::Error),
 }
 
-pub(crate) fn register_commands(
-    commands: &mut CreateApplicationCommands,
-) -> &mut CreateApplicationCommands {
+pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
     gifs::register_commands(commands);
-
-    commands
 }
 
-pub(crate) async fn interaction(
-    command: ApplicationCommandInteraction,
-    context: &Context,
-    bot: &SpiderBot,
-) {
+pub(crate) async fn interaction(command: CommandInteraction, context: &Context, bot: &SpiderBot) {
     let command_name = command.data.name.as_str();
     let result = match command_name {
         "play" => gifs::play(context, &command, bot).await,
@@ -51,7 +44,7 @@ pub(crate) async fn interaction(
     }
 }
 
-pub(crate) async fn autocomplete(command: AutocompleteInteraction, context: &Context) {
+pub(crate) async fn autocomplete(command: CommandInteraction, context: &Context) {
     let command_name = command.data.name.as_str();
     let result = match command_name {
         "play" => gifs::play_autocomplete(context, &command).await,
@@ -65,7 +58,7 @@ pub(crate) async fn autocomplete(command: AutocompleteInteraction, context: &Con
 
 async fn handle_unknown_command(
     ctx: &Context,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &CommandInteraction,
     command_name: &str,
 ) -> Result<(), CommandError> {
     error!("Received unknown command `{command_name}`, check command mappings");
@@ -75,36 +68,30 @@ async fn handle_unknown_command(
 
 async fn handle_unknown_autocomplete(
     ctx: &Context,
-    interaction: &AutocompleteInteraction,
+    interaction: &CommandInteraction,
     command_name: &str,
 ) -> Result<(), CommandError> {
     error!("Received autocomplete request for unknown command `{command_name}`, check command mappings");
-    interaction
-        .create_autocomplete_response(ctx, |response| response)
-        .await?;
+    let response = CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new());
+    interaction.create_response(ctx, response).await?;
     Ok(())
 }
 
 async fn send_error_interaction(
     ctx: &Context,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &CommandInteraction,
     title: &str,
     message: &str,
 ) -> Result<(), CommandError> {
-    interaction
-        .delete_original_interaction_response(ctx)
-        .await?;
-    interaction
-        .create_interaction_response(ctx, |response| {
-            response.interaction_response_data(|data| {
-                data.ephemeral(true).embed(|embed| {
-                    embed
-                        .color(Color::DARK_RED)
-                        .title(title)
-                        .description(message)
-                })
-            })
-        })
-        .await?;
+    interaction.delete_response(ctx).await?;
+    let response_embed = CreateEmbed::new()
+        .color(Color::DARK_RED)
+        .title(title)
+        .description(message);
+    let response_message = CreateInteractionResponseMessage::new()
+        .ephemeral(true)
+        .embed(response_embed);
+    let response = CreateInteractionResponse::Message(response_message);
+    interaction.create_response(ctx, response).await?;
     Ok(())
 }
