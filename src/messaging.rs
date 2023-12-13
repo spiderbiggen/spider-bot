@@ -1,23 +1,23 @@
-use serenity::model::prelude::application_command::ApplicationCommandInteraction;
+use serenity::all::{CommandInteraction, CreateMessage, EditInteractionResponse};
 use serenity::prelude::Context;
 
 use crate::commands::CommandError;
 
 pub(crate) async fn send_reply(
     ctx: &Context,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &CommandInteraction,
     messages: impl IntoIterator<Item = String>,
 ) -> Result<(), CommandError> {
     let mut iter = messages.into_iter();
     if let Some(msg) = iter.next() {
         interaction
-            .edit_original_interaction_response(ctx, |response| response.content(msg))
+            .edit_response(ctx, EditInteractionResponse::new().content(msg))
             .await?;
     }
     for msg in iter {
         interaction
             .channel_id
-            .send_message(ctx, |message| message.content(msg))
+            .send_message(ctx, CreateMessage::new().content(msg))
             .await?;
     }
 

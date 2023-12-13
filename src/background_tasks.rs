@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
+use serenity::all::CreateMessage;
 use serenity::builder::CreateEmbed;
 use serenity::cache::Cache;
 use serenity::http::Http;
-use serenity::model::channel::Channel;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::ChannelId;
-use serenity::CacheAndHttp;
 use tokio::sync::mpsc::{channel, Receiver};
 use tracing::{error, info, instrument};
 
 use otaku::db::Pool;
-use otaku::{Download, DownloadCollection, Subcribed, Subscriber};
+use otaku::{Download, DownloadCollection, Subscribed, Subscriber};
 use tenor::models::Gif;
 
 use crate::cache;
@@ -42,26 +41,36 @@ pub(crate) fn start_cache_trim(gif_cache: cache::Memory<[Gif]>) {
 pub(crate) fn start_anime_subscription(
     pool: Pool,
     anime_url: &'static str,
-    discord: Arc<CacheAndHttp>,
+    discord_cache: Arc<Cache>,
+    discord_http: Arc<Http>,
 ) {
     let (tx, rx) = channel(16);
 
     tokio::spawn(otaku::subscribe(anime_url, pool, tx));
-    tokio::spawn(embed_sender(discord, rx));
+    tokio::spawn(embed_sender(discord_cache, discord_http, rx));
 }
 
-async fn embed_sender(discord: Arc<CacheAndHttp>, mut rx: Receiver<Subcribed<DownloadCollection>>) {
+async fn embed_sender(
+    discord_cache: Arc<Cache>,
+    discord_http: Arc<Http>,
+    mut rx: Receiver<Subscribed<DownloadCollection>>,
+) {
     loop {
         if let Some(message) = rx.recv().await {
-            tokio::spawn(process_downloads_subscription(discord.clone(), message));
+            tokio::spawn(process_downloads_subscription(
+                discord_cache.clone(),
+                discord_http.clone(),
+                message,
+            ));
         }
     }
 }
 
 #[instrument(skip_all, fields(title))]
 async fn process_downloads_subscription(
-    discord: Arc<CacheAndHttp>,
-    message: Subcribed<DownloadCollection>,
+    discord_cache: Arc<Cache>,
+    discord_http: Arc<Http>,
+    message: Subscribed<DownloadCollection>,
 ) {
     let channel_ids = channel_ids(&message.subscribers);
 
@@ -71,10 +80,10 @@ async fn process_downloads_subscription(
 
     info!("Notifying {} channels", channel_ids.len());
     for channel_id in channel_ids {
-        if let Err(err) = send_embed(&discord.http, channel_id, embed.clone()).await {
+        if let Err(err) = send_embed(&discord_http, channel_id, embed.clone()).await {
             error!(
                 "Failed to send embed to `{}`: {err}",
-                format_channel(&discord.cache, channel_id),
+                format_channel(&discord_cache, channel_id),
             );
         }
     }
@@ -82,9 +91,9 @@ async fn process_downloads_subscription(
 
 fn create_embed(title: &str, downloads: Vec<Download>) -> CreateEmbed {
     let mut embed = CreateEmbed::default();
-    embed.title(title);
+    embed = embed.title(title);
     for d in downloads {
-        embed.field(
+        embed = embed.field(
             d.resolution,
             format!("[torrent]({})\n[comments]({})", d.torrent, d.comments),
             true,
@@ -95,9 +104,9 @@ fn create_embed(title: &str, downloads: Vec<Download>) -> CreateEmbed {
 }
 
 fn channel_ids(subscribers: &[Subscriber]) -> impl ExactSizeIterator<Item = ChannelId> + '_ {
-    subscribers.iter().map(|s| match s {
-        Subscriber::User(id) => ChannelId(*id),
-        Subscriber::Channel { channel_id, .. } => ChannelId(*channel_id),
+    subscribers.iter().map(|&s| match s {
+        Subscriber::User(id) => id.into(),
+        Subscriber::Channel { channel_id, .. } => channel_id.into(),
     })
 }
 
@@ -107,29 +116,19 @@ async fn send_embed(
     embed: CreateEmbed,
 ) -> Result<(), serenity::Error> {
     channel_id
-        .send_message(http, |m| m.set_embed(embed))
+        .send_message(http, CreateMessage::new().embed(embed))
         .await?;
     Ok(())
 }
 
 fn format_channel(cache: &Cache, channel_id: ChannelId) -> String {
-    match channel_id.to_channel_cached(cache) {
-        Some(Channel::Guild(channel)) => {
-            let guild_id = format_guild(cache, channel.guild_id);
-            format!("{} #{}", guild_id, channel.name)
-        }
-        Some(Channel::Category(category)) => {
-            let guild_id = format_guild(cache, category.guild_id);
-            format!("{} #{}", guild_id, category.name)
-        }
-        Some(Channel::Private(channel)) => channel.name(),
-        _ => channel_id.to_string(),
-    }
+    let Some(channel_ref) = channel_id.to_channel_cached(cache) else {
+        return channel_id.to_string();
+    };
+    let guild_id = format_guild(cache, channel_ref.guild_id);
+    format!("{guild_id} #{}", channel_ref.name)
 }
 
 fn format_guild(cache: &Cache, guild_id: GuildId) -> String {
-    match guild_id.name(cache) {
-        Some(name) => name,
-        None => guild_id.to_string(),
-    }
+    guild_id.name(cache).unwrap_or_else(|| guild_id.to_string())
 }

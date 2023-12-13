@@ -5,14 +5,11 @@ use rand::distributions::{WeightedError, WeightedIndex};
 use rand::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use serenity::builder::CreateApplicationCommands;
-use serenity::client::Context;
-use serenity::model::application::command::CommandType;
-use serenity::model::prelude::application_command::{
-    ApplicationCommandInteraction, CommandDataOptionValue,
+use serenity::all::{
+    CommandInteraction, CommandOptionType, CommandType, CreateAutocompleteResponse, CreateCommand,
+    CreateCommandOption, CreateInteractionResponse, ResolvedValue,
 };
-use serenity::model::prelude::autocomplete::AutocompleteInteraction;
-use serenity::model::prelude::command::CommandOptionType;
+use serenity::client::Context;
 use serenity::prelude::Mentionable;
 use tracing::{error, info, instrument};
 
@@ -24,63 +21,70 @@ use crate::commands::CommandError;
 use crate::messaging::send_reply;
 use crate::SpiderBot;
 
+const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
+static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
+    ("Apex Legends", &["apex legends"]),
+    ("Call of Duty", &["cod", "call of duty"]),
+    ("Chivalry 2", &["chivalry 2"]),
+    ("Halo Infinite", &["halo"]),
+    ("League of Legends", &["lol", "league of legends"]),
+    ("Overwatch 2", &["overwatch", "ow"]),
+    ("Phasmophobia", &["phasmophobia"]),
+    ("Rimworld", &["rimworld"]),
+    (
+        "Sid Meier's Civilization IV",
+        &["civilization", "sid meier's civilization iv"],
+    ),
+    ("Warzone", &["warzone"]),
+];
+
 #[instrument(skip_all)]
 pub(crate) async fn play_autocomplete(
     ctx: &Context,
-    interaction: &AutocompleteInteraction,
+    interaction: &CommandInteraction,
 ) -> Result<(), CommandError> {
     let mut filter: String = String::new();
-    for option in &interaction.data.options {
-        if option.name == "game" && option.focused {
-            if let Some(CommandDataOptionValue::String(input)) = option.resolved.as_ref() {
-                filter = input.to_lowercase();
-            }
+    if let Some(option) = interaction.data.autocomplete() {
+        if option.name == "game" && matches!(option.kind, CommandOptionType::String) {
+            filter = option.value.to_lowercase();
         }
     }
-    let mut completions: Vec<_> = GAME_AUTOCOMPLETION
+    let autocomplete_response = GAME_AUTOCOMPLETION
         .iter()
         .filter(|(_, cases)| cases.iter().any(|s| s.starts_with(&filter)))
-        .map(|(s, _)| s)
-        .collect();
-    completions.sort();
-    interaction
-        .create_autocomplete_response(ctx, |response| {
-            for s in completions {
-                response.add_string_choice(s, s);
-            }
-            response
-        })
-        .await?;
+        .take(MAX_AUTOCOMPLETE_RESULTS)
+        .fold(CreateAutocompleteResponse::new(), |acc, &(s, _)| {
+            acc.add_string_choice(s, s)
+        });
+    let response = CreateInteractionResponse::Autocomplete(autocomplete_response);
+    interaction.create_response(ctx, response).await?;
     Ok(())
 }
 
 #[instrument(skip_all)]
 pub(crate) async fn play(
     ctx: &Context,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &CommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
+    interaction.defer(ctx).await?;
     let mut mention: String = String::from("@here");
     let mut game_query: Option<&str> = None;
-    for option in &interaction.data.options {
-        let Some(resolved) = &option.resolved else {
-            continue;
-        };
-        match (option.name.as_str(), resolved) {
-            ("user", CommandDataOptionValue::User(user, _)) => {
+    for option in &interaction.data.options() {
+        match (option.name, &option.value) {
+            ("user", ResolvedValue::User(user, _)) => {
                 mention = user.mention().to_string();
             }
-            ("user", CommandDataOptionValue::Role(role)) => {
+            ("user", ResolvedValue::Role(role)) => {
                 mention = role.mention().to_string();
             }
-            ("game", CommandDataOptionValue::String(game)) => {
+            ("game", ResolvedValue::String(game)) => {
                 game_query.replace(game);
             }
             _ => (),
         }
     }
 
-    interaction.defer(ctx).await?;
     let gif = get_gif(bot, &game_query.unwrap_or("games").replace(' ', "_"), false).await?;
     let message = if let Some(game) = game_query {
         format!("{mention}! Let's play some {game}!")
@@ -93,19 +97,20 @@ pub(crate) async fn play(
 #[instrument(skip_all)]
 pub(crate) async fn hurry(
     ctx: &Context,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &CommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
+    interaction.defer(ctx).await?;
+
     let mut mention: String = String::from("@here");
-    for option in &interaction.data.options {
+    for option in &interaction.data.options() {
         if option.name == "user" {
-            if let Some(CommandDataOptionValue::User(user, _)) = &option.resolved {
+            if let ResolvedValue::User(user, _) = option.value {
                 mention = user.mention().to_string();
             }
         }
     }
 
-    interaction.defer(ctx).await?;
     let gif = get_gif(bot, "hurry up", true).await?;
     send_reply(ctx, interaction, [format!("{mention}! Hurry up!"), gif]).await
 }
@@ -113,57 +118,51 @@ pub(crate) async fn hurry(
 #[instrument(skip_all)]
 pub(crate) async fn sleep(
     ctx: &Context,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &CommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
+    interaction.defer(ctx).await?;
+
     let today = Utc::now().date_naive();
     let collection = SLEEP_GIF_COLLECTION.current(today);
-    interaction.defer(ctx).await?;
     let gif = collection.find(bot).await?;
     send_reply(ctx, interaction, [gif]).await
 }
 
-pub(crate) fn register_commands(
-    commands: &mut CreateApplicationCommands,
-) -> &mut CreateApplicationCommands {
-    commands.create_application_command(|command| {
-        command
-            .name("sleep")
+pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
+    commands.push(
+        CreateCommand::new("sleep")
             .description("Posts a random good night gif")
-            .kind(CommandType::ChatInput)
-    });
-    commands.create_application_command(|command| {
-        command
-            .name("play")
+            .kind(CommandType::ChatInput),
+    );
+    commands.push(
+        CreateCommand::new("play")
             .description("Tag someone to come play some games")
             .kind(CommandType::ChatInput)
-            .create_option(|option| {
-                option
-                    .name("game")
-                    .description("The game you want to play")
-                    .set_autocomplete(true)
-                    .kind(CommandOptionType::String)
-            })
-            .create_option(|option| {
-                option
-                    .name("user")
-                    .description("The user you want to mention")
-                    .kind(CommandOptionType::Mentionable)
-            })
-    });
-    commands.create_application_command(|command| {
-        command
-            .name("hurry")
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "game",
+                    "The game you want to play",
+                )
+                .set_autocomplete(true),
+            )
+            .add_option(CreateCommandOption::new(
+                CommandOptionType::Mentionable,
+                "user",
+                "The user you want to mention",
+            )),
+    );
+    commands.push(
+        CreateCommand::new("hurry")
             .description("Hurry up")
             .kind(CommandType::ChatInput)
-            .create_option(|option| {
-                option
-                    .name("user")
-                    .description("The user you want to mention")
-                    .kind(CommandOptionType::Mentionable)
-            })
-    });
-    commands
+            .add_option(CreateCommandOption::new(
+                CommandOptionType::Mentionable,
+                "user",
+                "The user you want to mention",
+            )),
+    );
 }
 
 async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Gif]>, GifError> {
@@ -190,22 +189,6 @@ async fn get_gif(bot: &SpiderBot, query: &str, random: bool) -> Result<String, G
         .map_or(single.url.as_str(), |s| s.url.as_str());
     Ok(url.into())
 }
-
-static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
-    ("League of Legends", &["lol", "league of legends"]),
-    ("Chivalry 2", &["chivalry 2"]),
-    ("Overwatch 2", &["overwatch", "ow"]),
-    (
-        "Sid Meier's Civilization IV",
-        &["civilization", "sid meier's civilization iv"],
-    ),
-    ("Phasmophobia", &["phasmophobia"]),
-    ("Rimworld", &["rimworld"]),
-    ("Halo Infinite", &["halo"]),
-    ("Apex Legends", &["apex legends"]),
-    ("Warzone", &["warzone"]),
-    ("Call of Duty", &["cod", "call of duty"]),
-];
 
 static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
     seasons: &[Season {
@@ -318,5 +301,35 @@ impl GifCollection {
             .iter()
             .find(|s| s.range == date)
             .map_or(&self.data, |s| &s.data)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn froggers_chance() {
+        let dist =
+            WeightedIndex::new(SLEEP_GIF_COLLECTION.data.0.iter().map(|q| u32::from(q.0))).unwrap();
+        let mut sum = 0u32;
+        let iterations = 100_000u32;
+        (0..iterations).for_each(|_| {
+            let mut counter = 1;
+            loop {
+                let query = SLEEP_GIF_COLLECTION.data.0[dist.sample(&mut thread_rng())].1;
+                if matches!(
+                    query,
+                    GifQuery::Single("https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif")
+                ) {
+                    break;
+                }
+                counter += 1;
+            }
+            sum += counter;
+        });
+        let average_rolls = f64::from(sum) / f64::from(iterations);
+        eprintln!("Froggers average rolls[iterations={iterations}]: {average_rolls:.2}");
+        assert!(average_rolls > 140.0 && average_rolls < 142.0);
     }
 }

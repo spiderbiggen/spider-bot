@@ -1,9 +1,6 @@
-#![deny(clippy::all)]
-#![warn(clippy::pedantic)]
-
 use std::cmp::min;
 use std::fmt::Display;
-use std::num::ParseIntError;
+use std::num::{NonZeroU64, ParseIntError};
 use std::time::Duration;
 
 use futures_util::TryStreamExt;
@@ -105,21 +102,24 @@ pub struct DownloadCollection {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Subcribed<T: Clone + PartialEq> {
+pub struct Subscribed<T: Clone + PartialEq> {
     pub content: T,
     pub subscribers: Vec<Subscriber>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Subscriber {
-    User(u64),
-    Channel { channel_id: u64, guild_id: u64 },
+    User(NonZeroU64),
+    Channel {
+        channel_id: NonZeroU64,
+        guild_id: NonZeroU64,
+    },
 }
 
 pub async fn subscribe(
     endpoint: &'static str,
     pool: Pool<Postgres>,
-    sender: Sender<Subcribed<DownloadCollection>>,
+    sender: Sender<Subscribed<DownloadCollection>>,
 ) {
     loop {
         let client = connect_with_backoff(endpoint).await;
@@ -153,7 +153,7 @@ async fn connect_with_backoff(
 async fn handle_stream(
     mut client: DownloadsClient<tonic::transport::Channel>,
     pool: Pool<Postgres>,
-    sender: Sender<Subcribed<DownloadCollection>>,
+    sender: Sender<Subscribed<DownloadCollection>>,
 ) -> Result<(), ConnectionError> {
     let mut stream = client.subscribe(()).await?;
     info!("Connected to grpc service");
@@ -168,7 +168,7 @@ async fn handle_stream(
 #[instrument(skip_all)]
 async fn process_message(
     pool: Pool<Postgres>,
-    sender: Sender<Subcribed<DownloadCollection>>,
+    sender: Sender<Subscribed<DownloadCollection>>,
     incoming_message: proto::api::v1::DownloadCollection,
 ) {
     debug!("Got message: {incoming_message:?}");
@@ -195,7 +195,7 @@ async fn process_message(
         return;
     };
 
-    let outbound_message = Subcribed {
+    let outbound_message = Subscribed {
         content: collection,
         subscribers,
     };
