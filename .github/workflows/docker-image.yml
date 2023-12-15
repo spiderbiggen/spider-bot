@@ -102,7 +102,7 @@ jobs:
             latest=auto
 
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: target
 
