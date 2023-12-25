@@ -28,7 +28,7 @@ otaku = { path = "otaku" }
 tenor = { path = "tenor" }
 
 async-trait = "0.1.52"
-anyhow = "1.0.75"
+anyhow = "1.0.76"
 chrono = "0.4.19"
 dotenv = "0.15.0"
 envmnt = "0.10.4"
