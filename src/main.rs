@@ -1,14 +1,10 @@
 use std::env;
-use std::sync::Arc;
 
 use dotenv::dotenv;
 use itertools::Itertools;
-use serenity::all::{
-    Cache, Command, GatewayIntents, GuildId, Http, Interaction, Ready, ShardManager,
-};
+use serenity::all::{Cache, Command, GatewayIntents, GuildId, Http, Interaction, Ready};
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
-use serenity::prelude::*;
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
