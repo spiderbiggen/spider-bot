@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
 use serenity::all::CreateMessage;
@@ -74,9 +75,9 @@ async fn process_downloads_subscription(
 ) {
     let channel_ids = channel_ids(&message.subscribers);
 
-    let title = message.content.episode.to_string();
+    let title = format!("{} {}", message.content.title, message.content.variant,);
     tracing::Span::current().record("title", &title);
-    let embed = create_embed(&title, message.content.downloads);
+    let embed = create_embed(title, message.content.downloads, message.content.created_at);
 
     info!("Notifying {} channels", channel_ids.len());
     for channel_id in channel_ids {
@@ -89,12 +90,11 @@ async fn process_downloads_subscription(
     }
 }
 
-fn create_embed(title: &str, downloads: Vec<Download>) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
-    embed = embed.title(title);
+fn create_embed(title: String, downloads: Vec<Download>, timestamp: DateTime<Utc>) -> CreateEmbed {
+    let mut embed = CreateEmbed::new().title(title).timestamp(timestamp);
     for d in downloads {
         embed = embed.field(
-            d.resolution,
+            format!("{}p", d.resolution),
             format!("[torrent]({})\n[comments]({})", d.torrent, d.comments),
             true,
         );
