@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package api.v2;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+message Batch {
+  uint32 start = 4;
+  uint32 end = 5;
+}
+
+message Episode {
+  uint32 number = 4;
+  uint32 decimal = 5;
+  uint32 version = 6;
+  string extra = 7;
+}
+
+message Movie {};
+
+message DownloadCollection {
+    string title = 1;
+    repeated Download downloads = 2;
+    google.protobuf.Timestamp created_at = 3;
+    google.protobuf.Timestamp updated_at = 4;
+    oneof variant {
+       Batch batch = 5;
+       Episode episode = 6;
+       Movie movie = 7;
+    };
+}
+
+message Download {
+  google.protobuf.Timestamp published_date = 2;
+  uint32 resolution = 3;
+  string comments = 4;
+  string torrent = 5;
+  string file_name = 6;
+}
+
+service Downloads {
+    rpc Subscribe (google.protobuf.Empty) returns (stream DownloadCollection) {};
+}
