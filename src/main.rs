@@ -23,12 +23,6 @@ mod consts;
 mod messaging;
 mod util;
 
-pub struct ShardManagerContainer;
-
-impl TypeMapKey for ShardManagerContainer {
-    type Value = Arc<ShardManager>;
-}
-
 #[derive(Debug, Clone)]
 struct SpiderBot {
     gif_cache: cache::Memory<[Gif]>,
@@ -61,7 +55,7 @@ impl EventHandler for SpiderBot {
         match interaction {
             Interaction::Command(command) => commands::interaction(command, &ctx, self).await,
             Interaction::Autocomplete(command) => commands::autocomplete(command, &ctx).await,
-            _ => error!("Unsupported interaction type received: {:?}", interaction),
+            _ => error!("Unsupported interaction type received: {interaction:?}"),
         }
     }
 }
@@ -99,11 +93,6 @@ async fn main() -> anyhow::Result<()> {
         client.cache.clone(),
         client.http.clone(),
     );
-
-    {
-        let mut data = client.data.write().await;
-        data.insert::<ShardManagerContainer>(client.shard_manager.clone());
-    }
 
     let shard_manager = client.shard_manager.clone();
 

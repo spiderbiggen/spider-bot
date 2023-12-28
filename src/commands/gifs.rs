@@ -28,12 +28,13 @@ static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
     ("Chivalry 2", &["chivalry 2"]),
     ("Halo Infinite", &["halo"]),
     ("League of Legends", &["lol", "league of legends"]),
+    ("Lethal Company", &["lethal company"]),
     ("Overwatch 2", &["overwatch", "ow"]),
     ("Phasmophobia", &["phasmophobia"]),
     ("Rimworld", &["rimworld"]),
     (
-        "Sid Meier's Civilization IV",
-        &["civilization", "sid meier's civilization iv"],
+        "Sid Meier's Civilization VI",
+        &["civilization", "sid meier's civilization vi"],
     ),
     ("Warzone", &["warzone"]),
 ];
@@ -186,8 +187,8 @@ async fn get_gif(bot: &SpiderBot, query: &str, random: bool) -> Result<String, G
     let url = single
         .media_formats
         .get(&MediaFilter::Gif)
-        .map_or(single.url.as_str(), |s| s.url.as_str());
-    Ok(url.into())
+        .map_or(single.url.into(), |s| s.url.into());
+    Ok(url)
 }
 
 static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
