@@ -16,7 +16,7 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2.7.1
+      - uses: Swatinem/rust-cache@v2.7.2
         with:
           cache-all-crates: true
 
