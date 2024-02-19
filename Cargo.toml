@@ -38,6 +38,7 @@ thiserror = "1.0.57"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 itertools = "0.12.1"
+url = "2.5.0"
 
 [dependencies.serenity]
 version = "0.12.0"

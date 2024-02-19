@@ -1,7 +1,8 @@
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::{Datelike, Month, NaiveDate, Utc};
-use rand::distributions::{WeightedError, WeightedIndex};
 use rand::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -11,7 +12,8 @@ use serenity::all::{
 };
 use serenity::client::Context;
 use serenity::prelude::Mentionable;
-use tracing::{error, info, instrument};
+use tracing::{debug, error, info, instrument};
+use url::Url;
 
 use tenor::error::Error as TenorError;
 use tenor::models::{ContentFilter, Gif, MediaFilter};
@@ -19,7 +21,7 @@ use tenor::Config;
 
 use crate::commands::CommandError;
 use crate::messaging::send_reply;
-use crate::SpiderBot;
+use crate::{cache, SpiderBot};
 
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
 static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
@@ -86,7 +88,8 @@ pub(crate) async fn play(
         }
     }
 
-    let gif = get_gif(bot, &game_query.unwrap_or("games").replace(' ', "_"), false).await?;
+    let query = game_query.unwrap_or("games").replace(' ', "_");
+    let gif = get_gif(bot, &query, false).await?;
     let message = if let Some(game) = game_query {
         format!("{mention}! Let's play some {game}!")
     } else {
@@ -124,10 +127,8 @@ pub(crate) async fn sleep(
 ) -> Result<(), CommandError> {
     interaction.defer(ctx).await?;
 
-    let today = Utc::now().date_naive();
-    let collection = SLEEP_GIF_COLLECTION.current(today);
-    let gif = collection.find(bot).await?;
-    send_reply(ctx, interaction, [gif]).await
+    let gif = SLEEP_GIF_COLLECTION.get_gif(bot).await?;
+    send_reply(ctx, interaction, [gif.into()]).await
 }
 
 pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
@@ -166,7 +167,7 @@ pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
     );
 }
 
-async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Gif]>, GifError> {
+async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Url]>, GifError> {
     if let Some(gifs) = bot.gif_cache.get(query).await {
         info!("Found \"{query}\" gifs in cache ");
         return Ok(gifs);
@@ -175,53 +176,84 @@ async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Gif
         .content_filter(ContentFilter::Medium)
         .media_filter(vec![MediaFilter::Gif])
         .random(random);
-    let gifs: Arc<[Gif]> = bot.tenor.search(query, Some(&config)).await?.into();
-    bot.gif_cache.insert(query.into(), gifs.clone()).await;
+    let gifs = bot.tenor.search(query, Some(&config)).await?;
+    let urls: Arc<[Url]> = gifs.into_iter().map(map_gif).collect::<Vec<_>>().into();
+    bot.gif_cache.insert(query.into(), urls.clone()).await;
     info!("Put \"{query}\" gifs into cache ");
-    Ok(gifs)
+    Ok(urls)
+}
+
+fn map_gif(mut gif: Gif) -> Url {
+    gif.media_formats
+        .remove(&MediaFilter::Gif)
+        .map_or(gif.url, |s| s.url)
 }
 
 async fn get_gif(bot: &SpiderBot, query: &str, random: bool) -> Result<String, GifError> {
     let gifs = get_gifs(bot, query, random).await?;
-    let single = gifs.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
-    let url = single
-        .media_formats
-        .get(&MediaFilter::Gif)
-        .map_or(single.url.as_str(), |s| s.url.as_str());
-    Ok(url.into())
+    let url = gifs.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
+    Ok(url.as_str().into())
 }
 
 static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
+    name: "sleep gifs",
+    ratio_override: Some(RatioQuery {
+        query: "https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif",
+        numerator: 1,
+        denominator: 150,
+    }),
     seasons: &[Season {
         range: DateRange {
             start: DayOfMonth(15, Month::October),
             end: DayOfMonth(31, Month::October),
         },
-        data: CollectionData(&[
-            WeightedQuery::single("https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif"),
-            WeightedQuery(47, GifQuery::Random("halloweensleep")),
-            WeightedQuery(47, GifQuery::Random("spookysleep")),
-            WeightedQuery(47, GifQuery::Random("horrorsleep")),
-        ]),
+        data: CollectionData(&["halloweensleep", "spookysleep", "horrorsleep"]),
     }],
     data: CollectionData(&[
-        WeightedQuery::single("https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif"),
-        WeightedQuery(20, GifQuery::Random("sleep")),
-        WeightedQuery(20, GifQuery::Random("dogsleep")),
-        WeightedQuery(20, GifQuery::Random("catsleep")),
-        WeightedQuery(20, GifQuery::Random("rabbitsleep")),
-        WeightedQuery(20, GifQuery::Random("ratsleep")),
-        WeightedQuery(20, GifQuery::Random("ducksleep")),
-        WeightedQuery(20, GifQuery::Random("animalsleep")),
+        "sleep",
+        "dogsleep",
+        "catsleep",
+        "rabbitsleep",
+        "ratsleep",
+        "ducksleep",
+        "animalsleep",
     ]),
 };
+
+#[instrument(skip_all)]
+pub(crate) async fn update_sleep_cache(
+    tenor: &tenor::Client,
+    gif_cache: &cache::Memory<[Url]>,
+) -> Result<(), GifError> {
+    const GIF_COUNT: u8 = 25;
+
+    debug!("Updating sleep gifs cache");
+    let date = Utc::now().date_naive();
+    let collection = SLEEP_GIF_COLLECTION.current(date);
+    let mut gif_collection: HashSet<Url> =
+        HashSet::with_capacity(collection.0.len() * usize::from(GIF_COUNT));
+    let config = Config::default()
+        .content_filter(ContentFilter::Medium)
+        .media_filter(vec![MediaFilter::Gif])
+        .limit(GIF_COUNT)
+        .random(true);
+    for &query in collection.0 {
+        let gifs = tenor.search(query, Some(&config)).await?;
+        gif_collection.extend(gifs.into_iter().map(|gif| gif.url));
+    }
+    let name = SLEEP_GIF_COLLECTION.name.into();
+    let gif_count = gif_collection.len();
+    gif_cache
+        .insert(name, gif_collection.into_iter().collect::<Vec<_>>())
+        .await;
+    info!(gif_count, "Updated sleep gifs cache");
+    Ok(())
+}
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum GifError {
     #[error(transparent)]
     Tenor(#[from] TenorError),
-    #[error(transparent)]
-    Distribution(#[from] WeightedError),
     #[error("no gifs found")]
     NoGifs,
 }
@@ -248,41 +280,14 @@ impl PartialEq<NaiveDate> for DateRange {
 }
 
 #[derive(Debug, Copy, Clone)]
-enum GifQuery {
-    Single(&'static str),
-    Random(&'static str),
-}
-
-impl GifQuery {
-    async fn find(&self, bot: &SpiderBot) -> Result<String, GifError> {
-        match self {
-            GifQuery::Single(url) => Ok((*url).to_string()),
-            GifQuery::Random(query) => {
-                Ok(get_gif(bot, query, matches!(self, GifQuery::Random(_))).await?)
-            }
-        }
-    }
+struct RatioQuery {
+    query: &'static str,
+    numerator: u32,
+    denominator: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct WeightedQuery(u8, GifQuery);
-
-impl WeightedQuery {
-    const fn single(url: &'static str) -> Self {
-        WeightedQuery(1, GifQuery::Single(url))
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct CollectionData(&'static [WeightedQuery]);
-
-impl CollectionData {
-    async fn find(&self, bot: &SpiderBot) -> Result<String, GifError> {
-        let dist = WeightedIndex::new(self.0.iter().map(|q| u32::from(q.0)))?;
-        let query = self.0[dist.sample(&mut thread_rng())].1;
-        query.find(bot).await
-    }
-}
+struct CollectionData(&'static [&'static str]);
 
 #[derive(Debug, Clone, Copy)]
 struct Season {
@@ -292,16 +297,36 @@ struct Season {
 
 #[derive(Debug, Clone, Copy)]
 struct GifCollection {
+    name: &'static str,
+    ratio_override: Option<RatioQuery>,
     seasons: &'static [Season],
     data: CollectionData,
 }
 
 impl GifCollection {
+    #[must_use]
     fn current(&self, date: NaiveDate) -> &CollectionData {
         self.seasons
             .iter()
             .find(|s| s.range == date)
             .map_or(&self.data, |s| &s.data)
+    }
+
+    async fn get_gif(&self, bot: &SpiderBot) -> Result<Cow<'static, str>, GifError> {
+        if let Some(query) = self.get_override() {
+            return Ok(Cow::Borrowed(query));
+        }
+        let collection = bot.gif_cache.get(self.name).await.ok_or(GifError::NoGifs)?;
+        let mut rng = thread_rng();
+        let gif = collection.choose(&mut rng).ok_or(GifError::NoGifs)?;
+        Ok(gif.as_str().to_string().into())
+    }
+
+    #[must_use]
+    fn get_override(&self) -> Option<&'static str> {
+        self.ratio_override
+            .filter(|ratio| thread_rng().gen_ratio(ratio.numerator, ratio.denominator))
+            .map(|query| query.query)
     }
 }
 
@@ -311,18 +336,14 @@ mod test {
 
     #[test]
     fn froggers_chance() {
-        let dist =
-            WeightedIndex::new(SLEEP_GIF_COLLECTION.data.0.iter().map(|q| u32::from(q.0))).unwrap();
         let mut sum = 0u32;
         let iterations = 100_000u32;
         (0..iterations).for_each(|_| {
             let mut counter = 1;
             loop {
-                let query = SLEEP_GIF_COLLECTION.data.0[dist.sample(&mut thread_rng())].1;
-                if matches!(
-                    query,
-                    GifQuery::Single("https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif")
-                ) {
+                if SLEEP_GIF_COLLECTION.get_override()
+                    == Some("https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif")
+                {
                     break;
                 }
                 counter += 1;
@@ -331,6 +352,6 @@ mod test {
         });
         let average_rolls = f64::from(sum) / f64::from(iterations);
         eprintln!("Froggers average rolls[iterations={iterations}]: {average_rolls:.2}");
-        assert!(average_rolls > 140.0 && average_rolls < 142.0);
+        assert!(average_rolls > 149.0 && average_rolls < 151.0);
     }
 }
