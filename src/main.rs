@@ -26,7 +26,6 @@ mod util;
 struct SpiderBot {
     gif_cache: cache::Memory<[Url]>,
     tenor: tenor::Client,
-    pool: otaku::db::Pool,
 }
 
 #[async_trait]
@@ -77,22 +76,17 @@ async fn main() -> anyhow::Result<()> {
     let bot = SpiderBot {
         gif_cache: cache::Memory::new(),
         tenor: tenor::Client::new(tenor_token),
-        pool,
     };
-
-    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
-    let mut client = Client::builder(discord_token, intents)
-        .event_handler(bot.clone())
-        .await?;
 
     start_sleep_gif_updater(bot.tenor.clone(), bot.gif_cache.clone())?;
     start_cache_trim(bot.gif_cache.clone());
-    start_anime_subscription(
-        bot.pool,
-        anime_url,
-        client.cache.clone(),
-        client.http.clone(),
-    );
+
+    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+    let mut client = Client::builder(discord_token, intents)
+        .event_handler(bot)
+        .await?;
+
+    start_anime_subscription(pool, anime_url, client.cache.clone(), client.http.clone());
 
     let shard_manager = client.shard_manager.clone();
 

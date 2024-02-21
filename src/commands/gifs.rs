@@ -12,7 +12,7 @@ use serenity::all::{
 };
 use serenity::client::Context;
 use serenity::prelude::Mentionable;
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, trace};
 use url::Url;
 
 use tenor::error::Error as TenorError;
@@ -46,19 +46,34 @@ pub(crate) async fn play_autocomplete(
     ctx: &Context,
     interaction: &CommandInteraction,
 ) -> Result<(), CommandError> {
-    let mut filter: String = String::new();
+    trace!("filtering autocomplete");
+    let mut filter: Option<String> = None;
     if let Some(option) = interaction.data.autocomplete() {
         if option.name == "game" && matches!(option.kind, CommandOptionType::String) {
-            filter = option.value.to_lowercase();
+            filter.replace(option.value.to_lowercase());
         }
     }
+    let Some(filter) = filter else {
+        debug!("found nothing to autocomplete");
+        let interaction_response =
+            CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new());
+        interaction
+            .create_response(ctx, interaction_response)
+            .await?;
+        return Ok(());
+    };
+
+    trace!(filter, "filtering games");
+    let mut counter = 0;
     let autocomplete_response = GAME_AUTOCOMPLETION
         .iter()
         .filter(|(_, cases)| cases.iter().any(|s| s.starts_with(&filter)))
         .take(MAX_AUTOCOMPLETE_RESULTS)
         .fold(CreateAutocompleteResponse::new(), |acc, &(s, _)| {
+            counter += 1;
             acc.add_string_choice(s, s)
         });
+    trace!(filter, matches = counter, "Found matches");
     let response = CreateInteractionResponse::Autocomplete(autocomplete_response);
     interaction.create_response(ctx, response).await?;
     Ok(())
@@ -70,7 +85,6 @@ pub(crate) async fn play(
     interaction: &CommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
-    interaction.defer(ctx).await?;
     let mut mention: String = String::from("@here");
     let mut game_query: Option<&str> = None;
     for option in &interaction.data.options() {
@@ -104,8 +118,6 @@ pub(crate) async fn hurry(
     interaction: &CommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
-    interaction.defer(ctx).await?;
-
     let mut mention: String = String::from("@here");
     for option in &interaction.data.options() {
         if option.name == "user" {
@@ -125,9 +137,9 @@ pub(crate) async fn sleep(
     interaction: &CommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
-    interaction.defer(ctx).await?;
-
+    trace!("looking for sleep gif in cache");
     let gif = SLEEP_GIF_COLLECTION.get_gif(bot).await?;
+    debug!("found sleep gif in cache");
     send_reply(ctx, interaction, [gif.into()]).await
 }
 
@@ -178,8 +190,8 @@ async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Url
         .random(random);
     let gifs = bot.tenor.search(query, Some(&config)).await?;
     let urls: Arc<[Url]> = gifs.into_iter().map(map_gif).collect::<Vec<_>>().into();
-    bot.gif_cache.insert(query.into(), urls.clone()).await;
-    info!("Put \"{query}\" gifs into cache ");
+    bot.gif_cache.insert(query.to_string(), urls.clone()).await;
+    info!("Put \"{query}\" gifs into cache");
     Ok(urls)
 }
 
@@ -203,13 +215,14 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
         denominator: 150,
     }),
     seasons: &[Season {
+        name: "halloween",
         range: DateRange {
             start: DayOfMonth(15, Month::October),
             end: DayOfMonth(31, Month::October),
         },
-        data: CollectionData(&["halloweensleep", "spookysleep", "horrorsleep"]),
+        data: &["halloweensleep", "spookysleep", "horrorsleep"],
     }],
-    data: CollectionData(&[
+    data: &[
         "sleep",
         "dogsleep",
         "catsleep",
@@ -217,7 +230,7 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
         "ratsleep",
         "ducksleep",
         "animalsleep",
-    ]),
+    ],
 };
 
 #[instrument(skip_all)]
@@ -230,18 +243,19 @@ pub(crate) async fn update_sleep_cache(
     debug!("Updating sleep gifs cache");
     let date = Utc::now().date_naive();
     let collection = SLEEP_GIF_COLLECTION.current(date);
+
     let mut gif_collection: HashSet<Url> =
-        HashSet::with_capacity(collection.0.len() * usize::from(GIF_COUNT));
+        HashSet::with_capacity(collection.len() * usize::from(GIF_COUNT));
     let config = Config::default()
         .content_filter(ContentFilter::Medium)
         .media_filter(vec![MediaFilter::Gif])
         .limit(GIF_COUNT)
         .random(true);
-    for &query in collection.0 {
+    for &query in collection {
         let gifs = tenor.search(query, Some(&config)).await?;
         gif_collection.extend(gifs.into_iter().map(|gif| gif.url));
     }
-    let name = SLEEP_GIF_COLLECTION.name.into();
+    let name = SLEEP_GIF_COLLECTION.name;
     let gif_count = gif_collection.len();
     gif_cache
         .insert(name, gif_collection.into_iter().collect::<Vec<_>>())
@@ -267,8 +281,8 @@ pub(crate) struct DateRange {
     end: DayOfMonth,
 }
 
-impl PartialEq<NaiveDate> for DateRange {
-    fn eq(&self, other: &NaiveDate) -> bool {
+impl DateRange {
+    fn contains(self, other: NaiveDate) -> bool {
         let day = other.day();
         let month = other.month();
         let start_month = self.start.1.number_from_month();
@@ -279,6 +293,14 @@ impl PartialEq<NaiveDate> for DateRange {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct GifCollection<'a> {
+    name: &'static str,
+    ratio_override: Option<RatioQuery>,
+    seasons: &'a [Season<'a>],
+    data: CollectionData<'a>,
+}
+
 #[derive(Debug, Copy, Clone)]
 struct RatioQuery {
     query: &'static str,
@@ -287,38 +309,38 @@ struct RatioQuery {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct CollectionData(&'static [&'static str]);
-
-#[derive(Debug, Clone, Copy)]
-struct Season {
-    range: DateRange,
-    data: CollectionData,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct GifCollection {
+struct Season<'a> {
     name: &'static str,
-    ratio_override: Option<RatioQuery>,
-    seasons: &'static [Season],
-    data: CollectionData,
+    range: DateRange,
+    data: CollectionData<'a>,
 }
 
-impl GifCollection {
+type CollectionData<'a> = &'a [&'a str];
+
+impl<'a> GifCollection<'a> {
     #[must_use]
-    fn current(&self, date: NaiveDate) -> &CollectionData {
-        self.seasons
-            .iter()
-            .find(|s| s.range == date)
-            .map_or(&self.data, |s| &s.data)
+    #[instrument(skip_all)]
+    fn current(&self, date: NaiveDate) -> &[&str] {
+        let season = self.seasons.iter().find(|s| s.range.contains(date));
+        match season {
+            None => self.data,
+            Some(season) => {
+                debug!("found gifs for {} season", season.name);
+                season.data
+            }
+        }
     }
 
+    #[instrument(skip_all, err)]
     async fn get_gif(&self, bot: &SpiderBot) -> Result<Cow<'static, str>, GifError> {
         if let Some(query) = self.get_override() {
+            debug!("Found gif override");
             return Ok(Cow::Borrowed(query));
         }
         let collection = bot.gif_cache.get(self.name).await.ok_or(GifError::NoGifs)?;
-        let mut rng = thread_rng();
-        let gif = collection.choose(&mut rng).ok_or(GifError::NoGifs)?;
+        let gif = collection
+            .choose(&mut thread_rng())
+            .ok_or(GifError::NoGifs)?;
         Ok(gif.as_str().to_string().into())
     }
 

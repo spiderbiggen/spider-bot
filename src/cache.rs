@@ -1,6 +1,8 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
 use tokio::sync::RwLock;
 
 use crate::consts;
@@ -10,7 +12,7 @@ pub struct Key<T: ?Sized>(Instant, Arc<T>);
 
 #[derive(Debug)]
 pub struct Memory<T: ?Sized> {
-    map: Arc<RwLock<HashMap<String, Key<T>>>>,
+    map: Arc<RwLock<HashMap<Cow<'static, str>, Key<T>>>>,
 }
 
 impl<T: ?Sized> Clone for Memory<T> {
@@ -41,14 +43,14 @@ impl<T: ?Sized> Memory<T> {
             .map(|Key(_, value)| value.clone())
     }
 
-    pub async fn insert(&self, key: String, value: impl Into<Arc<T>>) {
+    pub async fn insert(&self, key: impl Into<Cow<'static, str>>, value: impl Into<Arc<T>>) {
         self.insert_with_duration(key, value, consts::CACHE_LIFETIME)
             .await;
     }
 
     pub async fn insert_with_duration(
         &self,
-        key: String,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<Arc<T>>,
         duration: Duration,
     ) {
@@ -58,12 +60,12 @@ impl<T: ?Sized> Memory<T> {
 
     pub async fn insert_with_expiration(
         &self,
-        key: String,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<Arc<T>>,
         expiration: Instant,
     ) {
         let mut map = self.map.write().await;
-        map.insert(key, Key(expiration, value.into()));
+        map.insert(key.into(), Key(expiration, value.into()));
     }
 
     pub async fn trim(&self) {
