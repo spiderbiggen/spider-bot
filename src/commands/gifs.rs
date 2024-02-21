@@ -25,17 +25,17 @@ use crate::{cache, SpiderBot};
 
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
 static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
-    ("Apex Legends", &["apex legends"]),
-    ("Call of Duty", &["cod", "call of duty"]),
-    ("Chivalry 2", &["chivalry 2"]),
-    ("Halo Infinite", &["halo"]),
-    ("League of Legends", &["lol", "league of legends"]),
-    ("Lethal Company", &["lethal company"]),
-    ("Overwatch 2", &["overwatch", "ow"]),
+    ("Apex_Legends", &["apex legends"]),
+    ("Call_of_Duty", &["cod", "call of duty"]),
+    ("Chivalry_2", &["chivalry 2"]),
+    ("Halo_Infinite", &["halo"]),
+    ("League_of_Legends", &["lol", "league of legends"]),
+    ("Lethal_Company", &["lethal company"]),
+    ("Overwatch_2", &["overwatch", "ow"]),
     ("Phasmophobia", &["phasmophobia"]),
     ("Rimworld", &["rimworld"]),
     (
-        "Sid Meier's Civilization VI",
+        "Sid_Meier's_Civilization_VI",
         &["civilization", "sid meier's civilization vi"],
     ),
     ("Warzone", &["warzone"]),
@@ -85,15 +85,15 @@ pub(crate) async fn play(
     interaction: &CommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
-    let mut mention: String = String::from("@here");
+    let mut mention = Cow::Borrowed("@here");
     let mut game_query: Option<&str> = None;
     for option in &interaction.data.options() {
         match (option.name, &option.value) {
             ("user", ResolvedValue::User(user, _)) => {
-                mention = user.mention().to_string();
+                mention = user.mention().to_string().into();
             }
             ("user", ResolvedValue::Role(role)) => {
-                mention = role.mention().to_string();
+                mention = role.mention().to_string().into();
             }
             ("game", ResolvedValue::String(game)) => {
                 game_query.replace(game);
@@ -102,8 +102,8 @@ pub(crate) async fn play(
         }
     }
 
-    let query = game_query.unwrap_or("games").replace(' ', "_");
-    let gif = get_gif(bot, &query, false).await?;
+    let query = game_query.map_or(Cow::Borrowed("games"), |s| Cow::Owned(s.replace(' ', "_")));
+    let gif = get_gif(bot, query, false).await?;
     let message = if let Some(game) = game_query {
         format!("{mention}! Let's play some {game}!")
     } else {
@@ -118,16 +118,16 @@ pub(crate) async fn hurry(
     interaction: &CommandInteraction,
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
-    let mut mention: String = String::from("@here");
+    let mut mention = Cow::Borrowed("@here");
     for option in &interaction.data.options() {
         if option.name == "user" {
             if let ResolvedValue::User(user, _) = option.value {
-                mention = user.mention().to_string();
+                mention = Cow::Owned(user.mention().to_string());
             }
         }
     }
 
-    let gif = get_gif(bot, "hurry up", true).await?;
+    let gif = get_gif(bot, Cow::Borrowed("hurry up"), true).await?;
     send_reply(ctx, interaction, [format!("{mention}! Hurry up!"), gif]).await
 }
 
@@ -179,8 +179,12 @@ pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
     );
 }
 
-async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Url]>, GifError> {
-    if let Some(gifs) = bot.gif_cache.get(query).await {
+async fn get_gifs(
+    bot: &SpiderBot,
+    query: Cow<'static, str>,
+    random: bool,
+) -> Result<Arc<[Url]>, GifError> {
+    if let Some(gifs) = bot.gif_cache.get(&query).await {
         info!("Found \"{query}\" gifs in cache ");
         return Ok(gifs);
     }
@@ -188,10 +192,10 @@ async fn get_gifs(bot: &SpiderBot, query: &str, random: bool) -> Result<Arc<[Url
         .content_filter(ContentFilter::Medium)
         .media_filter(vec![MediaFilter::Gif])
         .random(random);
-    let gifs = bot.tenor.search(query, Some(&config)).await?;
+    let gifs = bot.tenor.search(&query, Some(&config)).await?;
     let urls: Arc<[Url]> = gifs.into_iter().map(map_gif).collect::<Vec<_>>().into();
-    bot.gif_cache.insert(query.to_string(), urls.clone()).await;
-    info!("Put \"{query}\" gifs into cache");
+    info!("Putting \"{query}\" gifs into cache");
+    bot.gif_cache.insert(query, urls.clone()).await;
     Ok(urls)
 }
 
@@ -201,7 +205,11 @@ fn map_gif(mut gif: Gif) -> Url {
         .map_or(gif.url, |s| s.url)
 }
 
-async fn get_gif(bot: &SpiderBot, query: &str, random: bool) -> Result<String, GifError> {
+async fn get_gif(
+    bot: &SpiderBot,
+    query: Cow<'static, str>,
+    random: bool,
+) -> Result<String, GifError> {
     let gifs = get_gifs(bot, query, random).await?;
     let url = gifs.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
     Ok(url.as_str().into())
