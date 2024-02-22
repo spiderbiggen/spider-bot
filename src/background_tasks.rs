@@ -1,6 +1,8 @@
-use chrono::{DateTime, Utc};
 use std::sync::Arc;
+use std::time::Duration;
 
+use anyhow::anyhow;
+use chrono::{DateTime, Utc};
 use serenity::all::CreateMessage;
 use serenity::builder::CreateEmbed;
 use serenity::cache::Cache;
@@ -8,21 +10,50 @@ use serenity::http::Http;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::ChannelId;
 use tokio::sync::mpsc::{channel, Receiver};
+use tokio::time::{interval_at, Instant, Interval};
 use tracing::{error, info, instrument};
+use url::Url;
 
 use otaku::db::Pool;
 use otaku::{Download, DownloadCollection, Subscribed, Subscriber};
-use tenor::models::Gif;
 
 use crate::cache;
+use crate::commands::gifs;
 use crate::consts::CACHE_TRIM_INTERVAL;
+
+fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
+    let start = Instant::now();
+    let now: DateTime<Utc> = Utc::now();
+    let seconds = u64::try_from(now.timestamp())?;
+    let sub_seconds = seconds % period.as_secs();
+    let minute = DateTime::from_timestamp(i64::try_from(seconds - sub_seconds)?, 0)
+        .ok_or(anyhow!("failed to create new date time"))?;
+    let offset = (now - minute).to_std()?;
+    Ok(interval_at(start - offset, period))
+}
+
+pub(crate) fn start_sleep_gif_updater(
+    tenor: tenor::Client,
+    gif_cache: cache::Memory<[Url]>,
+) -> anyhow::Result<()> {
+    let mut interval = interval_at_previous_period(Duration::from_secs(6 * 3600))?;
+    tokio::spawn(async move {
+        loop {
+            interval.tick().await;
+            if let Err(err) = gifs::update_sleep_cache(&tenor, &gif_cache).await {
+                error!("failed to update sleep gif cache: {}", err);
+            }
+        }
+    });
+    Ok(())
+}
 
 /// Launch a periodic trim of the gif cache.
 ///
 /// ### Arguments
 ///
 /// - `gif_cache` - the cache of gifs
-pub(crate) fn start_cache_trim(gif_cache: cache::Memory<[Gif]>) {
+pub(crate) fn start_cache_trim(gif_cache: cache::Memory<[Url]>) {
     let mut interval = tokio::time::interval(CACHE_TRIM_INTERVAL);
     tokio::spawn(async move {
         loop {

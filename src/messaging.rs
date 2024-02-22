@@ -1,4 +1,6 @@
-use serenity::all::{CommandInteraction, CreateMessage, EditInteractionResponse};
+use serenity::all::{
+    CommandInteraction, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+};
 use serenity::prelude::Context;
 
 use crate::commands::CommandError;
@@ -10,8 +12,11 @@ pub(crate) async fn send_reply(
 ) -> Result<(), CommandError> {
     let mut iter = messages.into_iter();
     if let Some(msg) = iter.next() {
+        let interaction_response = CreateInteractionResponse::Message(
+            CreateInteractionResponseMessage::new().content(msg),
+        );
         interaction
-            .edit_response(ctx, EditInteractionResponse::new().content(msg))
+            .create_response(ctx, interaction_response)
             .await?;
     }
     for msg in iter {

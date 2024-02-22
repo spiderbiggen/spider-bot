@@ -2,15 +2,18 @@ use std::env;
 
 use dotenv::dotenv;
 use itertools::Itertools;
-use serenity::all::{Cache, Command, GatewayIntents, GuildId, Http, Interaction, Ready};
+#[cfg(debug_assertions)]
+use serenity::all::{Cache, Http};
+use serenity::all::{Command, GatewayIntents, GuildId, Interaction, Ready};
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
+use url::Url;
 
-use tenor::models::Gif;
-
-use crate::background_tasks::{start_anime_subscription, start_cache_trim};
+use crate::background_tasks::{
+    start_anime_subscription, start_cache_trim, start_sleep_gif_updater,
+};
 
 mod background_tasks;
 mod cache;
@@ -21,9 +24,8 @@ mod util;
 
 #[derive(Debug, Clone)]
 struct SpiderBot {
-    gif_cache: cache::Memory<[Gif]>,
+    gif_cache: cache::Memory<[Url]>,
     tenor: tenor::Client,
-    pool: otaku::db::Pool,
 }
 
 #[async_trait]
@@ -74,21 +76,17 @@ async fn main() -> anyhow::Result<()> {
     let bot = SpiderBot {
         gif_cache: cache::Memory::new(),
         tenor: tenor::Client::new(tenor_token),
-        pool,
     };
+
+    start_sleep_gif_updater(bot.tenor.clone(), bot.gif_cache.clone())?;
+    start_cache_trim(bot.gif_cache.clone());
 
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(discord_token, intents)
-        .event_handler(bot.clone())
+        .event_handler(bot)
         .await?;
 
-    start_cache_trim(bot.gif_cache.clone());
-    start_anime_subscription(
-        bot.pool,
-        anime_url,
-        client.cache.clone(),
-        client.http.clone(),
-    );
+    start_anime_subscription(pool, anime_url, client.cache.clone(), client.http.clone());
 
     let shard_manager = client.shard_manager.clone();
 
