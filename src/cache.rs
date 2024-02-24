@@ -71,6 +71,6 @@ impl<T: ?Sized> Memory<T> {
     pub async fn trim(&self) {
         let now = Instant::now();
         let mut map = self.map.write().await;
-        map.retain(|_, &mut Key(expiration, _)| expiration <= now);
+        map.retain(|_, &mut Key(expiration, _)| expiration >= now);
     }
 }
