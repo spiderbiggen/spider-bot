@@ -25,17 +25,17 @@ use crate::{cache, SpiderBot};
 
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
 static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
-    ("Apex_Legends", &["apex legends"]),
-    ("Call_of_Duty", &["cod", "call of duty"]),
-    ("Chivalry_2", &["chivalry 2"]),
-    ("Halo_Infinite", &["halo"]),
-    ("League_of_Legends", &["lol", "league of legends"]),
-    ("Lethal_Company", &["lethal company"]),
-    ("Overwatch_2", &["overwatch", "ow"]),
+    ("Apex Legends", &["apex legends"]),
+    ("Call of Duty", &["cod", "call of duty"]),
+    ("Chivalry 2", &["chivalry 2"]),
+    ("Halo Infinite", &["halo"]),
+    ("League of Legends", &["lol", "league of legends"]),
+    ("Lethal Company", &["lethal company"]),
+    ("Overwatch 2", &["overwatch", "ow"]),
     ("Phasmophobia", &["phasmophobia"]),
     ("Rimworld", &["rimworld"]),
     (
-        "Sid_Meier's_Civilization_VI",
+        "Sid Meier's Civilization VI",
         &["civilization", "sid meier's civilization vi"],
     ),
     ("Warzone", &["warzone"]),
@@ -64,16 +64,13 @@ pub(crate) async fn play_autocomplete(
     };
 
     trace!(filter, "filtering games");
-    let mut counter = 0;
     let autocomplete_response = GAME_AUTOCOMPLETION
         .iter()
         .filter(|(_, cases)| cases.iter().any(|s| s.starts_with(&filter)))
         .take(MAX_AUTOCOMPLETE_RESULTS)
         .fold(CreateAutocompleteResponse::new(), |acc, &(s, _)| {
-            counter += 1;
             acc.add_string_choice(s, s)
         });
-    trace!(filter, matches = counter, "Found matches");
     let response = CreateInteractionResponse::Autocomplete(autocomplete_response);
     interaction.create_response(ctx, response).await?;
     Ok(())
@@ -87,13 +84,13 @@ pub(crate) async fn play(
 ) -> Result<(), CommandError> {
     let mut mention = Cow::Borrowed("@here");
     let mut game_query: Option<&str> = None;
-    for option in &interaction.data.options() {
-        match (option.name, &option.value) {
+    for option in interaction.data.options() {
+        match (option.name, option.value) {
             ("user", ResolvedValue::User(user, _)) => {
-                mention = user.mention().to_string().into();
+                mention = Cow::Owned(user.mention().to_string());
             }
             ("user", ResolvedValue::Role(role)) => {
-                mention = role.mention().to_string().into();
+                mention = Cow::Owned(role.mention().to_string());
             }
             ("game", ResolvedValue::String(game)) => {
                 game_query.replace(game);
@@ -119,11 +116,15 @@ pub(crate) async fn hurry(
     bot: &SpiderBot,
 ) -> Result<(), CommandError> {
     let mut mention = Cow::Borrowed("@here");
-    for option in &interaction.data.options() {
-        if option.name == "user" {
-            if let ResolvedValue::User(user, _) = option.value {
+    for option in interaction.data.options() {
+        match (option.name, option.value) {
+            ("user", ResolvedValue::User(user, _)) => {
                 mention = Cow::Owned(user.mention().to_string());
             }
+            ("user", ResolvedValue::Role(role)) => {
+                mention = Cow::Owned(role.mention().to_string());
+            }
+            _ => (),
         }
     }
 
