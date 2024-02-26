@@ -5,11 +5,14 @@ use serenity::prelude::Context;
 
 use crate::commands::CommandError;
 
-pub(crate) async fn send_reply(
+pub(crate) async fn send_reply<S>(
     ctx: &Context,
     interaction: &CommandInteraction,
-    messages: impl IntoIterator<Item = String>,
-) -> Result<(), CommandError> {
+    messages: impl IntoIterator<Item = S>,
+) -> Result<(), CommandError>
+where
+    S: Into<String>,
+{
     let mut iter = messages.into_iter();
     if let Some(msg) = iter.next() {
         let interaction_response = CreateInteractionResponse::Message(

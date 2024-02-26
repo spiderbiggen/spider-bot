@@ -29,7 +29,8 @@ fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
     let minute = DateTime::from_timestamp(i64::try_from(seconds - sub_seconds)?, 0)
         .ok_or(anyhow!("failed to create new date time"))?;
     let offset = (now - minute).to_std()?;
-    Ok(interval_at(start - offset, period))
+    let best_effort_start = start.checked_sub(offset).unwrap_or(start);
+    Ok(interval_at(best_effort_start, period))
 }
 
 pub(crate) fn start_sleep_gif_updater(
