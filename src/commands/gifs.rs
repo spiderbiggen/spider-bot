@@ -133,6 +133,16 @@ pub(crate) async fn hurry(
 }
 
 #[instrument(skip_all)]
+pub(crate) async fn morbin_time(
+    ctx: &Context,
+    interaction: &CommandInteraction,
+    bot: &SpiderBot,
+) -> Result<(), CommandError> {
+    let gif = get_gif(bot, Cow::Borrowed("morbin_time"), false).await?;
+    send_reply(ctx, interaction, Some(gif)).await
+}
+
+#[instrument(skip_all)]
 pub(crate) async fn sleep(
     ctx: &Context,
     interaction: &CommandInteraction,
@@ -141,7 +151,7 @@ pub(crate) async fn sleep(
     trace!("looking for sleep gif in cache");
     let gif = SLEEP_GIF_COLLECTION.get_gif(bot).await?;
     debug!("found sleep gif in cache");
-    send_reply(ctx, interaction, [gif.into()]).await
+    send_reply(ctx, interaction, Some(gif)).await
 }
 
 pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
@@ -165,7 +175,7 @@ pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
             .add_option(CreateCommandOption::new(
                 CommandOptionType::Mentionable,
                 "user",
-                "The user you want to mention",
+                "Mention another user/role",
             )),
     );
     commands.push(
@@ -175,8 +185,13 @@ pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
             .add_option(CreateCommandOption::new(
                 CommandOptionType::Mentionable,
                 "user",
-                "The user you want to mention",
+                "Mention another user/role",
             )),
+    );
+    commands.push(
+        CreateCommand::new("morbin")
+            .description("It's morbin time")
+            .kind(CommandType::ChatInput),
     );
 }
 

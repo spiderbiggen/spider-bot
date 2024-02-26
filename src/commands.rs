@@ -28,6 +28,7 @@ pub(crate) async fn interaction(command: CommandInteraction, context: &Context, 
     let result = match command_name {
         "play" => gifs::play(context, &command, bot).await,
         "hurry" => gifs::hurry(context, &command, bot).await,
+        "morbin" => gifs::morbin_time(context, &command, bot).await,
         "sleep" => gifs::sleep(context, &command, bot).await,
         cmd => handle_unknown_command(context, &command, cmd).await,
     };
@@ -83,7 +84,6 @@ async fn send_error_interaction(
     title: &str,
     message: &str,
 ) -> Result<(), CommandError> {
-    interaction.delete_response(ctx).await?;
     let response_embed = CreateEmbed::new()
         .color(Color::DARK_RED)
         .title(title)
