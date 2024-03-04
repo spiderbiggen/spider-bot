@@ -3,15 +3,12 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::{Datelike, Month, NaiveDate, Utc};
+use futures::{Stream, StreamExt};
+use poise::serenity_prelude as serenity;
 use rand::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use serenity::all::{
-    CommandInteraction, CommandOptionType, CommandType, CreateAutocompleteResponse, CreateCommand,
-    CreateCommandOption, CreateInteractionResponse, ResolvedValue,
-};
-use serenity::client::Context;
-use serenity::prelude::Mentionable;
+use serenity::{CreateMessage, Mentionable, User};
 use tracing::{debug, error, info, instrument, trace};
 use url::Url;
 
@@ -20,7 +17,7 @@ use tenor::models::{ContentFilter, Gif, MediaFilter};
 use tenor::Config;
 
 use crate::commands::CommandError;
-use crate::messaging::send_reply;
+use crate::Context;
 use crate::{cache, SpiderBot};
 
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
@@ -41,158 +38,86 @@ static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
     ("Warzone", &["warzone"]),
 ];
 
-#[instrument(skip_all)]
-pub(crate) async fn play_autocomplete(
-    ctx: &Context,
-    interaction: &CommandInteraction,
-) -> Result<(), CommandError> {
-    trace!("filtering autocomplete");
-    let mut filter: Option<String> = None;
-    if let Some(option) = interaction.data.autocomplete() {
-        if option.name == "game" && matches!(option.kind, CommandOptionType::String) {
-            filter.replace(option.value.to_lowercase());
-        }
-    }
-    let Some(filter) = filter else {
-        debug!("found nothing to autocomplete");
-        let interaction_response =
-            CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new());
-        interaction
-            .create_response(ctx, interaction_response)
-            .await?;
-        return Ok(());
-    };
-
-    trace!(filter, "filtering games");
-    let autocomplete_response = GAME_AUTOCOMPLETION
-        .iter()
-        .filter(|(_, cases)| cases.iter().any(|s| s.starts_with(&filter)))
+// Allow this unused async because autocomplete functions need to be async
+#[allow(clippy::unused_async)]
+async fn play_autocomplete<'a>(
+    _: Context<'_>,
+    partial: &'a str,
+) -> impl Stream<Item = String> + 'a {
+    futures::stream::iter(GAME_AUTOCOMPLETION)
+        .filter(move |(_, cases)| {
+            futures::future::ready(cases.iter().any(|s| s.starts_with(partial)))
+        })
+        .map(|(name, _)| (*name).to_string())
         .take(MAX_AUTOCOMPLETE_RESULTS)
-        .fold(CreateAutocompleteResponse::new(), |acc, &(s, _)| {
-            acc.add_string_choice(s, s)
-        });
-    let response = CreateInteractionResponse::Autocomplete(autocomplete_response);
-    interaction.create_response(ctx, response).await?;
-    Ok(())
 }
 
 #[instrument(skip_all)]
+#[poise::command(slash_command)]
+/// Tag someone to play some games with
 pub(crate) async fn play(
-    ctx: &Context,
-    interaction: &CommandInteraction,
-    bot: &SpiderBot,
+    ctx: Context<'_>,
+    #[description = "Who to play games with"] user: Option<User>,
+    #[description = "What game you want to play"]
+    #[autocomplete = "play_autocomplete"]
+    game: Option<String>,
 ) -> Result<(), CommandError> {
-    let mut mention = Cow::Borrowed("@here");
-    let mut game_query: Option<&str> = None;
-    for option in interaction.data.options() {
-        match (option.name, option.value) {
-            ("user", ResolvedValue::User(user, _)) => {
-                mention = Cow::Owned(user.mention().to_string());
-            }
-            ("user", ResolvedValue::Role(role)) => {
-                mention = Cow::Owned(role.mention().to_string());
-            }
-            ("game", ResolvedValue::String(game)) => {
-                game_query.replace(game);
-            }
-            _ => (),
-        }
-    }
-
-    let query = game_query.map_or(Cow::Borrowed("games"), |s| Cow::Owned(s.replace(' ', "_")));
-    let gif = get_gif(bot, query, false).await?;
-    let message = if let Some(game) = game_query {
+    let query = game
+        .as_ref()
+        .map_or(Cow::Borrowed("games"), |s| Cow::Owned(s.replace(' ', "_")));
+    let mention = user.map_or(Cow::Borrowed("@here"), |u| {
+        Cow::Owned(u.mention().to_string())
+    });
+    let gif = get_gif(ctx.data(), query, false).await?;
+    let message = if let Some(game) = &game {
         format!("{mention}! Let's play some {game}!")
     } else {
         format!("{mention}! Let's play a game!")
     };
-    send_reply(ctx, interaction, [message, gif]).await
+    ctx.reply(message).await?;
+    ctx.channel_id()
+        .send_message(ctx, CreateMessage::new().content(gif))
+        .await?;
+    Ok(())
 }
 
 #[instrument(skip_all)]
+#[poise::command(slash_command)]
+///Tell someone to hurry up
 pub(crate) async fn hurry(
-    ctx: &Context,
-    interaction: &CommandInteraction,
-    bot: &SpiderBot,
+    ctx: Context<'_>,
+    #[description = "Who should hurry up"] user: Option<User>,
 ) -> Result<(), CommandError> {
-    let mut mention = Cow::Borrowed("@here");
-    for option in interaction.data.options() {
-        match (option.name, option.value) {
-            ("user", ResolvedValue::User(user, _)) => {
-                mention = Cow::Owned(user.mention().to_string());
-            }
-            ("user", ResolvedValue::Role(role)) => {
-                mention = Cow::Owned(role.mention().to_string());
-            }
-            _ => (),
-        }
-    }
+    let mention = user.map_or(Cow::Borrowed("@here"), |u| {
+        Cow::Owned(u.mention().to_string())
+    });
 
-    let gif = get_gif(bot, Cow::Borrowed("hurry up"), true).await?;
-    send_reply(ctx, interaction, [format!("{mention}! Hurry up!"), gif]).await
+    let gif = get_gif(ctx.data(), Cow::Borrowed("hurry up"), true).await?;
+    ctx.reply(format!("{mention}! Hurry up!")).await?;
+    ctx.channel_id()
+        .send_message(ctx, CreateMessage::new().content(gif))
+        .await?;
+    Ok(())
 }
 
 #[instrument(skip_all)]
-pub(crate) async fn morbin_time(
-    ctx: &Context,
-    interaction: &CommandInteraction,
-    bot: &SpiderBot,
-) -> Result<(), CommandError> {
-    let gif = get_gif(bot, Cow::Borrowed("morbin_time"), false).await?;
-    send_reply(ctx, interaction, Some(gif)).await
+#[poise::command(slash_command)]
+/// It's Morbin time
+pub(crate) async fn morbin(ctx: Context<'_>) -> Result<(), CommandError> {
+    let gif = get_gif(ctx.data(), Cow::Borrowed("morbin_time"), false).await?;
+    ctx.reply(gif).await?;
+    Ok(())
 }
 
 #[instrument(skip_all)]
-pub(crate) async fn sleep(
-    ctx: &Context,
-    interaction: &CommandInteraction,
-    bot: &SpiderBot,
-) -> Result<(), CommandError> {
+#[poise::command(slash_command)]
+/// Posts a random good night gif
+pub(crate) async fn sleep(ctx: Context<'_>) -> Result<(), CommandError> {
     trace!("looking for sleep gif in cache");
-    let gif = SLEEP_GIF_COLLECTION.get_gif(bot).await?;
+    let gif = SLEEP_GIF_COLLECTION.get_gif(ctx.data()).await?;
     debug!("found sleep gif in cache");
-    send_reply(ctx, interaction, Some(gif)).await
-}
-
-pub(crate) fn register_commands(commands: &mut Vec<CreateCommand>) {
-    commands.push(
-        CreateCommand::new("sleep")
-            .description("Posts a random good night gif")
-            .kind(CommandType::ChatInput),
-    );
-    commands.push(
-        CreateCommand::new("play")
-            .description("Tag someone to come play some games")
-            .kind(CommandType::ChatInput)
-            .add_option(
-                CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "game",
-                    "The game you want to play",
-                )
-                .set_autocomplete(true),
-            )
-            .add_option(CreateCommandOption::new(
-                CommandOptionType::Mentionable,
-                "user",
-                "Mention another user/role",
-            )),
-    );
-    commands.push(
-        CreateCommand::new("hurry")
-            .description("Hurry up")
-            .kind(CommandType::ChatInput)
-            .add_option(CreateCommandOption::new(
-                CommandOptionType::Mentionable,
-                "user",
-                "Mention another user/role",
-            )),
-    );
-    commands.push(
-        CreateCommand::new("morbin")
-            .description("It's morbin time")
-            .kind(CommandType::ChatInput),
-    );
+    ctx.reply(gif).await?;
+    Ok(())
 }
 
 async fn get_gifs(
