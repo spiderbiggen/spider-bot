@@ -38,8 +38,10 @@ static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
     ("Warzone", &["warzone"]),
 ];
 
+// Allow this unused async because autocomplete functions need to be async
+#[allow(clippy::unused_async)]
 async fn play_autocomplete<'a>(
-    _ctx: Context<'_>,
+    _: Context<'_>,
     partial: &'a str,
 ) -> impl Stream<Item = String> + 'a {
     futures::stream::iter(GAME_AUTOCOMPLETION)
