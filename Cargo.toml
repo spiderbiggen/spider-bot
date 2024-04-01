@@ -29,7 +29,7 @@ tenor = { path = "tenor" }
 
 async-trait = "0.1.79"
 anyhow = "1.0.81"
-chrono = "0.4.35"
+chrono = "0.4.37"
 dotenv = "0.15.0"
 envmnt = "0.10.4"
 futures = "0.3.21"
