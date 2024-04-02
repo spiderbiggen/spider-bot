@@ -107,7 +107,7 @@ async fn process_downloads_subscription(
 ) {
     let channel_ids = channel_ids(&message.subscribers);
 
-    let title = format!("{} {}", message.content.title, message.content.variant,);
+    let title = format!("{} {}", message.content.title, message.content.variant);
     tracing::Span::current().record("title", &title);
     let embed = create_embed(title, message.content.downloads, message.content.created_at);
 
