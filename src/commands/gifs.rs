@@ -43,12 +43,12 @@ static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
 async fn play_autocomplete<'a>(
     _: Context<'_>,
     partial: &'a str,
-) -> impl Stream<Item = String> + 'a {
+) -> impl Stream<Item = &'static str> + 'a {
     futures::stream::iter(GAME_AUTOCOMPLETION)
         .filter(move |(_, cases)| {
             futures::future::ready(cases.iter().any(|s| s.starts_with(partial)))
         })
-        .map(|(name, _)| (*name).to_string())
+        .map(|(name, _)| *name)
         .take(MAX_AUTOCOMPLETE_RESULTS)
 }
 
