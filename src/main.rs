@@ -15,7 +15,6 @@ mod background_tasks;
 mod cache;
 mod commands;
 mod consts;
-mod util;
 
 #[derive(Debug, Clone)]
 struct SpiderBot {
