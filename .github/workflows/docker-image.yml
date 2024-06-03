@@ -6,7 +6,7 @@ on:
     tags: [ 'v*.*.*' ]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
   cancel-in-progress: true
 
 env:
@@ -141,8 +141,8 @@ jobs:
             {
               "grant_type":"password",
               "prompt":"none",
-              "client_id": "kube-environment",
-              "scope": "openid",
+              "client_id": "${{secrets.DEPLOY_CLIENT_ID}}",
+              "scope": "openid kube",
               "username": "${{secrets.DEPLOY_USERNAME}}",
               "password": "${{secrets.DEPLOY_PASSWORD}}"
             }
