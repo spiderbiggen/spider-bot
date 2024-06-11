@@ -1,10 +1,11 @@
+use std::num::NonZeroU64;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
-use serenity::all::CreateMessage;
-use serenity::builder::CreateEmbed;
+use serenity::all::{CacheHttp, CreateMessage, Message, UserId};
+use serenity::builder::{Builder, CreateEmbed};
 use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
@@ -99,6 +100,29 @@ async fn embed_sender(
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum MessageChannelId {
+    User(UserId),
+    Guild(GuildId, ChannelId),
+}
+
+impl MessageChannelId {
+    async fn send_message(
+        self,
+        cache_http: impl CacheHttp,
+        builder: CreateMessage,
+    ) -> Result<Message, serenity::Error> {
+        match self {
+            MessageChannelId::User(id) => id.direct_message(cache_http, builder).await,
+            MessageChannelId::Guild(guild_id, channel_id) => {
+                builder
+                    .execute(cache_http, (channel_id, Some(guild_id)))
+                    .await
+            }
+        }
+    }
+}
+
 #[instrument(skip_all, fields(title))]
 async fn process_downloads_subscription(
     discord_cache: Arc<Cache>,
@@ -135,10 +159,13 @@ fn create_embed(title: String, downloads: Vec<Download>, timestamp: DateTime<Utc
     embed
 }
 
-fn channel_ids(subscribers: &[Subscriber]) -> impl ExactSizeIterator<Item = ChannelId> + '_ {
+fn channel_ids(subscribers: &[Subscriber]) -> impl ExactSizeIterator<Item = MessageChannelId> + '_ {
     subscribers.iter().map(|&s| match s {
-        Subscriber::User(id) => id.into(),
-        Subscriber::Channel { channel_id, .. } => channel_id.into(),
+        Subscriber::User(id) => MessageChannelId::User(id.into()),
+        Subscriber::Channel {
+            guild_id,
+            channel_id,
+        } => MessageChannelId::Guild(guild_id.into(), channel_id.into()),
     })
 }
 
@@ -153,14 +180,20 @@ async fn send_embed(
     Ok(())
 }
 
-fn format_channel(cache: &Cache, channel_id: ChannelId) -> String {
-    let Some(channel_ref) = channel_id.to_channel_cached(cache) else {
-        return channel_id.to_string();
-    };
-    let guild_id = format_guild(cache, channel_ref.guild_id);
-    format!("{guild_id} #{}", channel_ref.name)
-}
-
-fn format_guild(cache: &Cache, guild_id: GuildId) -> String {
-    guild_id.name(cache).unwrap_or_else(|| guild_id.to_string())
+fn format_channel(cache: &Cache, id: MessageChannelId) -> String {
+    match id {
+        MessageChannelId::User(id) => cache
+            .user(id)
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| id.to_string()),
+        MessageChannelId::Guild(guild_id, channel_id) => {
+            let Some(guild) = cache.guild(guild_id) else {
+                return format!("{guild_id} #{channel_id}");
+            };
+            let Some(channel) = guild.channels.get(&channel_id) else {
+                return format!("{} #{channel_id}", guild.name);
+            };
+            format!("{} #{}", guild.name, channel.name)
+        }
+    }
 }
