@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
-use serenity::all::CreateMessage;
-use serenity::builder::CreateEmbed;
+use serenity::all::{CacheHttp, CreateMessage, Message, UserId};
+use serenity::builder::{Builder, CreateEmbed};
 use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
@@ -99,68 +99,103 @@ async fn embed_sender(
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum MessageChannelId {
+    User(UserId),
+    Guild(GuildId, ChannelId),
+}
+
+impl MessageChannelId {
+    async fn send_message(
+        self,
+        cache_http: impl CacheHttp,
+        builder: CreateMessage,
+    ) -> Result<Message, serenity::Error> {
+        match self {
+            MessageChannelId::User(id) => id.direct_message(cache_http, builder).await,
+            MessageChannelId::Guild(guild_id, channel_id) => {
+                builder
+                    .execute(cache_http, (channel_id, Some(guild_id)))
+                    .await
+            }
+        }
+    }
+
+    async fn send_embed(
+        self,
+        cache_http: impl CacheHttp,
+        embed: CreateEmbed,
+    ) -> Result<Message, serenity::Error> {
+        self.send_message(cache_http, CreateMessage::new().embed(embed))
+            .await
+    }
+
+    fn format(self, cache: &Cache) -> String {
+        match self {
+            MessageChannelId::User(id) => cache
+                .user(id)
+                .map_or_else(|| id.to_string(), |s| s.name.clone()),
+            MessageChannelId::Guild(guild_id, channel_id) => {
+                let Some(guild) = cache.guild(guild_id) else {
+                    return format!("{guild_id} #{channel_id}");
+                };
+                let Some(channel) = guild.channels.get(&channel_id) else {
+                    return format!("{} #{channel_id}", guild.name);
+                };
+                format!("{} #{}", guild.name, channel.name)
+            }
+        }
+    }
+}
+
 #[instrument(skip_all, fields(title))]
 async fn process_downloads_subscription(
     discord_cache: Arc<Cache>,
     discord_http: Arc<Http>,
     message: Subscribed<DownloadCollection>,
 ) {
-    let channel_ids = channel_ids(&message.subscribers);
-
     let title = format!("{} {}", message.content.title, message.content.variant);
     tracing::Span::current().record("title", &title);
-    let embed = create_embed(title, message.content.downloads, message.content.created_at);
 
+    let embed = CreateEmbed::new()
+        .title(title)
+        .timestamp(message.content.created_at)
+        .fields(download_fields(message.content.downloads));
+
+    let channel_ids = channel_ids(&message.subscribers);
     info!("Notifying {} channels", channel_ids.len());
     for channel_id in channel_ids {
-        if let Err(err) = send_embed(&discord_http, channel_id, embed.clone()).await {
+        if let Err(err) = channel_id.send_embed(&discord_http, embed.clone()).await {
             error!(
-                "Failed to send embed to `{}`: {err}",
-                format_channel(&discord_cache, channel_id),
+                channel_id = channel_id.format(&discord_cache),
+                "Failed to send embed to, {err}",
             );
         }
     }
 }
 
-fn create_embed(title: String, downloads: Vec<Download>, timestamp: DateTime<Utc>) -> CreateEmbed {
-    let mut embed = CreateEmbed::new().title(title).timestamp(timestamp);
-    for d in downloads {
-        embed = embed.field(
-            format!("{}p", d.resolution),
-            format!("[torrent]({})\n[comments]({})", d.torrent, d.comments),
+fn download_fields<I>(downloads: I) -> impl IntoIterator<Item = (String, String, bool)>
+where
+    I: IntoIterator<Item = Download>,
+{
+    downloads.into_iter().map(|download| {
+        (
+            format!("{}p", download.resolution),
+            format!(
+                "[torrent]({})\n[comments]({})",
+                download.torrent, download.comments
+            ),
             true,
-        );
-    }
-
-    embed
-}
-
-fn channel_ids(subscribers: &[Subscriber]) -> impl ExactSizeIterator<Item = ChannelId> + '_ {
-    subscribers.iter().map(|&s| match s {
-        Subscriber::User(id) => id.into(),
-        Subscriber::Channel { channel_id, .. } => channel_id.into(),
+        )
     })
 }
 
-async fn send_embed(
-    http: &Http,
-    channel_id: ChannelId,
-    embed: CreateEmbed,
-) -> Result<(), serenity::Error> {
-    channel_id
-        .send_message(http, CreateMessage::new().embed(embed))
-        .await?;
-    Ok(())
-}
-
-fn format_channel(cache: &Cache, channel_id: ChannelId) -> String {
-    let Some(channel_ref) = channel_id.to_channel_cached(cache) else {
-        return channel_id.to_string();
-    };
-    let guild_id = format_guild(cache, channel_ref.guild_id);
-    format!("{guild_id} #{}", channel_ref.name)
-}
-
-fn format_guild(cache: &Cache, guild_id: GuildId) -> String {
-    guild_id.name(cache).unwrap_or_else(|| guild_id.to_string())
+fn channel_ids(subscribers: &[Subscriber]) -> impl ExactSizeIterator<Item = MessageChannelId> + '_ {
+    subscribers.iter().map(|&s| match s {
+        Subscriber::User(id) => MessageChannelId::User(id.into()),
+        Subscriber::Channel {
+            guild_id,
+            channel_id,
+        } => MessageChannelId::Guild(guild_id.into(), channel_id.into()),
+    })
 }
