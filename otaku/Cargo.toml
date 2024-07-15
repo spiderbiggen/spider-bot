@@ -16,7 +16,7 @@ futures-util = "0.3.28"
 prost-types = "0.13.1"
 thiserror = "1.0.61"
 tokio = "1"
-tonic = { version = "0.11.0", features = ["gzip"] }
+tonic = { version = "0.12.0", features = ["gzip"] }
 tracing = "0.1.40"
 
 [dependencies.sqlx]
