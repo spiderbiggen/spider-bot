@@ -20,5 +20,5 @@ tonic = { version = "0.12.1", features = ["gzip"] }
 tracing = "0.1.40"
 
 [dependencies.sqlx]
-version = "0.7.4"
+version = "0.8.0"
 features = ["postgres", "runtime-tokio-rustls", "chrono", "uuid"]
