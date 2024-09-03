@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 tonic = { version = "0.12.1", default-features = false, features = ["codegen"] }
-prost = "0.13.1"
+prost = "0.13.2"
 prost-types= "0.13.1"
 
 [build-dependencies]
