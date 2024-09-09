@@ -27,7 +27,7 @@ workspace = true
 otaku = { path = "otaku" }
 tenor = { path = "tenor" }
 
-async-trait = "0.1.80"
+async-trait = "0.1.82"
 anyhow = "1.0.86"
 chrono = "0.4.38"
 dotenv = "0.15.0"
