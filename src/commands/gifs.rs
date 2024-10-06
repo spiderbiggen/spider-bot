@@ -20,7 +20,17 @@ use crate::commands::CommandError;
 use crate::Context;
 use crate::{cache, SpiderBot};
 
+const GIF_COUNT: u8 = 25;
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
+const BASE_GIF_CONFIG: &Config = &Config::new()
+    .content_filter(ContentFilter::Medium)
+    .media_filter(&[MediaFilter::Gif]);
+const SLEEP_GIF_CACHE_CONFIG: Config = Config::new()
+    .content_filter(ContentFilter::Medium)
+    .media_filter(&[MediaFilter::Gif])
+    .limit(GIF_COUNT)
+    .random(true);
+
 static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
     ("Apex Legends", &["apex legends"]),
     ("Call of Duty", &["cod", "call of duty"]),
@@ -41,7 +51,7 @@ static GAME_AUTOCOMPLETION: &[(&str, &[&str])] = &[
 // Allow this unused async because autocomplete functions need to be async
 #[allow(clippy::unused_async)]
 async fn play_autocomplete<'a>(
-    _: Context<'_>,
+    _: Context<'_, '_>,
     partial: &'a str,
 ) -> impl Stream<Item = &'static str> + 'a {
     futures::stream::iter(GAME_AUTOCOMPLETION)
@@ -56,7 +66,7 @@ async fn play_autocomplete<'a>(
 #[poise::command(slash_command)]
 /// Tag someone to play some games with
 pub(crate) async fn play(
-    ctx: Context<'_>,
+    ctx: Context<'_, '_>,
     #[description = "Who to play games with"] user: Option<User>,
     #[description = "What game you want to play"]
     #[autocomplete = "play_autocomplete"]
@@ -85,7 +95,7 @@ pub(crate) async fn play(
 #[poise::command(slash_command)]
 ///Tell someone to hurry up
 pub(crate) async fn hurry(
-    ctx: Context<'_>,
+    ctx: Context<'_, '_>,
     #[description = "Who should hurry up"] user: Option<User>,
 ) -> Result<(), CommandError> {
     let mention = user.map_or(Cow::Borrowed("@here"), |u| {
@@ -103,7 +113,7 @@ pub(crate) async fn hurry(
 #[instrument(skip_all)]
 #[poise::command(slash_command)]
 /// It's Morbin time
-pub(crate) async fn morbin(ctx: Context<'_>) -> Result<(), CommandError> {
+pub(crate) async fn morbin(ctx: Context<'_, '_>) -> Result<(), CommandError> {
     let gif = get_gif(ctx.data(), Cow::Borrowed("morbin_time"), false).await?;
     ctx.reply(gif).await?;
     Ok(())
@@ -112,7 +122,7 @@ pub(crate) async fn morbin(ctx: Context<'_>) -> Result<(), CommandError> {
 #[instrument(skip_all)]
 #[poise::command(slash_command)]
 /// Posts a random good night gif
-pub(crate) async fn sleep(ctx: Context<'_>) -> Result<(), CommandError> {
+pub(crate) async fn sleep(ctx: Context<'_, '_>) -> Result<(), CommandError> {
     trace!("looking for sleep gif in cache");
     let gif = SLEEP_GIF_COLLECTION.get_gif(ctx.data()).await?;
     debug!("found sleep gif in cache");
@@ -121,7 +131,7 @@ pub(crate) async fn sleep(ctx: Context<'_>) -> Result<(), CommandError> {
 }
 
 async fn get_gifs(
-    bot: &SpiderBot,
+    bot: &SpiderBot<'_>,
     query: Cow<'static, str>,
     random: bool,
 ) -> Result<Arc<[Url]>, GifError> {
@@ -129,11 +139,8 @@ async fn get_gifs(
         info!("Found \"{query}\" gifs in cache ");
         return Ok(gifs);
     }
-    let config = Config::default()
-        .content_filter(ContentFilter::Medium)
-        .media_filter(vec![MediaFilter::Gif])
-        .random(random);
-    let gifs = bot.tenor.search(&query, Some(&config)).await?;
+    let config = BASE_GIF_CONFIG.random(random);
+    let gifs = bot.tenor.search(&query, Some(config)).await?;
     let urls: Arc<[Url]> = gifs.into_iter().map(map_gif).collect::<Vec<_>>().into();
     info!("Putting \"{query}\" gifs into cache");
     bot.gif_cache.insert(query, urls.clone()).await;
@@ -147,7 +154,7 @@ fn map_gif(mut gif: Gif) -> Url {
 }
 
 async fn get_gif(
-    bot: &SpiderBot,
+    bot: &SpiderBot<'_>,
     query: Cow<'static, str>,
     random: bool,
 ) -> Result<String, GifError> {
@@ -184,24 +191,17 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
 
 #[instrument(skip_all)]
 pub(crate) async fn update_sleep_cache(
-    tenor: &tenor::Client,
+    tenor: &tenor::Client<'_>,
     gif_cache: &cache::Memory<[Url]>,
 ) -> Result<(), GifError> {
-    const GIF_COUNT: u8 = 25;
-
     debug!("Updating sleep gifs cache");
     let date = Utc::now().date_naive();
     let collection = SLEEP_GIF_COLLECTION.current(date);
 
     let mut gif_collection: HashSet<Url> =
         HashSet::with_capacity(collection.len() * usize::from(GIF_COUNT));
-    let config = Config::default()
-        .content_filter(ContentFilter::Medium)
-        .media_filter(vec![MediaFilter::Gif])
-        .limit(GIF_COUNT)
-        .random(true);
     for &query in collection {
-        let gifs = tenor.search(query, Some(&config)).await?;
+        let gifs = tenor.search(query, Some(SLEEP_GIF_CACHE_CONFIG)).await?;
         gif_collection.extend(gifs.into_iter().map(|gif| gif.url));
     }
     let name = SLEEP_GIF_COLLECTION.name;
@@ -281,7 +281,7 @@ impl<'a> GifCollection<'a> {
     }
 
     #[instrument(skip_all, err)]
-    async fn get_gif(&self, bot: &SpiderBot) -> Result<Cow<'static, str>, GifError> {
+    async fn get_gif(&self, bot: &SpiderBot<'_>) -> Result<Cow<'static, str>, GifError> {
         if let Some(query) = self.get_override() {
             debug!("Found gif override");
             return Ok(Cow::Borrowed(query));
