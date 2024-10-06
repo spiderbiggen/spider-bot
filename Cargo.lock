@@ -2373,7 +2373,7 @@ dependencies = [
 
 [[package]]
 name = "spider-bot"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2748,7 +2748,7 @@ dependencies = [
 
 [[package]]
 name = "tenor"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "itertools",
  "reqwest 0.12.8",

@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use strum_macros::{EnumString, IntoStaticStr};
@@ -54,6 +55,12 @@ pub enum ContentFilter {
     /// Rated G, PG, PG-13 and R (no nudity)
     #[strum(serialize = "off")]
     Off,
+}
+
+impl From<ContentFilter> for Cow<'static, str> {
+    fn from(value: ContentFilter) -> Self {
+        Self::Borrowed(value.into())
+    }
 }
 
 impl Default for ContentFilter {

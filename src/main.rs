@@ -17,12 +17,12 @@ mod commands;
 mod consts;
 
 #[derive(Debug, Clone)]
-struct SpiderBot {
+struct SpiderBot<'tenor_config> {
     gif_cache: cache::Memory<[Url]>,
-    tenor: tenor::Client,
+    tenor: tenor::Client<'tenor_config>,
 }
 
-type Context<'a> = poise::Context<'a, SpiderBot, CommandError>;
+type Context<'a, 'tenor_config> = poise::Context<'a, SpiderBot<'tenor_config>, CommandError>;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

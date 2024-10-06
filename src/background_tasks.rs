@@ -34,7 +34,7 @@ fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
 }
 
 pub(crate) fn start_sleep_gif_updater(
-    tenor: tenor::Client,
+    tenor: tenor::Client<'static>,
     gif_cache: cache::Memory<[Url]>,
 ) -> anyhow::Result<()> {
     let mut interval = interval_at_previous_period(Duration::from_secs(6 * 3600))?;
@@ -49,11 +49,11 @@ pub(crate) fn start_sleep_gif_updater(
     Ok(())
 }
 
-/// Launch a periodic trim of the gif cache.
+/// Launch periodic trim of the GIF cache.
 ///
 /// ### Arguments
 ///
-/// - `gif_cache` - the cache of gifs
+/// - `gif_cache` - the cache of GIFs
 pub(crate) fn start_cache_trim(gif_cache: cache::Memory<[Url]>) {
     let mut interval = tokio::time::interval(CACHE_TRIM_INTERVAL);
     tokio::spawn(async move {
