@@ -41,9 +41,7 @@ pub(crate) fn start_sleep_gif_updater(
     tokio::spawn(async move {
         loop {
             interval.tick().await;
-            if let Err(err) = gifs::update_sleep_cache(&tenor, &gif_cache).await {
-                error!("failed to update sleep gif cache: {}", err);
-            }
+            gifs::update_gif_cache(&tenor, &gif_cache).await;
         }
     });
     Ok(())

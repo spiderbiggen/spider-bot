@@ -1,6 +1,6 @@
 [package]
 name = "spider-bot"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2021"
 description = "Discord bot for the 'Turtle Force' discord"
@@ -35,6 +35,7 @@ envmnt = "0.10.4"
 futures = "0.3.21"
 poise = "0.6.1"
 rand = "0.8.5"
+rustrict = "0.7.31"
 thiserror = "1.0.63"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
