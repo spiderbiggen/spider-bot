@@ -20,12 +20,15 @@ pub struct Client<'config> {
 
 impl<'config> Client<'config> {
     #[must_use]
-    pub fn new(api_key: String) -> Client<'config> {
+    pub fn new(api_key: impl Into<Arc<str>>) -> Client<'config> {
         Self::with_config(api_key, None)
     }
 
     #[must_use]
-    pub fn with_config(api_key: String, config: Option<Config<'config>>) -> Client<'config> {
+    pub fn with_config(
+        api_key: impl Into<Arc<str>>,
+        config: Option<Config<'config>>,
+    ) -> Client<'config> {
         Client {
             api_key: api_key.into(),
             reqwest: reqwest::Client::new(),
@@ -38,42 +41,42 @@ impl<'config> Client<'config> {
         query: &'a str,
         config: Option<Config<'a>>,
     ) -> Vec<(&'static str, Cow<'config, str>)> {
-        // always overallocate to maximum capacity
         match self.merge_config(config) {
             None => vec![
                 ("key", self.api_key.as_ref().into()),
                 ("q", Cow::Borrowed(query)),
             ],
 
-            Some(merged_config) => {
+            Some(cfg) => {
+                // always overallocate to maximum capacity
                 let mut params: Vec<(&str, Cow<'_, str>)> = Vec::with_capacity(9);
                 params.push(("key", self.api_key.as_ref().into()));
                 params.push(("q", Cow::Borrowed(query)));
-                if let Some(country) = merged_config.country {
+                if let Some(country) = cfg.country {
                     params.push(("country", Cow::Borrowed(country)));
                 }
-                if let Some(locale) = merged_config.locale {
+                if let Some(locale) = cfg.locale {
                     params.push(("locale", Cow::Borrowed(locale)));
                 }
-                if let Some(content_filter) = merged_config.content_filter {
+                if let Some(content_filter) = cfg.content_filter {
                     let filter = content_filter.into();
                     params.push(("contentfilter", filter));
                 }
-                if let Some(media_filter) = merged_config.media_filter {
+                if let Some(media_filter) = cfg.media_filter {
                     let filter = media_filter
                         .iter()
                         .map(Into::<&'static str>::into)
                         .join(",");
                     params.push(("media_filter", Cow::Owned(filter)));
                 }
-                if let Some(random) = merged_config.random {
+                if let Some(random) = cfg.random {
                     let random = if random { "true" } else { "false" };
                     params.push(("random", Cow::Borrowed(random)));
                 }
-                if let Some(limit) = merged_config.limit {
+                if let Some(limit) = cfg.limit {
                     params.push(("limit", limit.to_string().into()));
                 }
-                if let Some(position) = merged_config.position {
+                if let Some(position) = cfg.position {
                     params.push(("pos", Cow::Borrowed(position)));
                 }
                 params
@@ -97,17 +100,8 @@ impl<'config> Client<'config> {
     fn merge_config<'a: 'config>(&self, config: Option<Config<'a>>) -> Option<Config<'config>> {
         match (self.base_config, config) {
             (None, None) => None,
-            (Some(base_cfg), None) => Some(base_cfg),
-            (None, Some(cfg)) => Some(cfg),
-            (Some(base_cfg), Some(mut cfg)) => {
-                cfg.country = cfg.country.or(base_cfg.country);
-                cfg.locale = cfg.locale.or(base_cfg.locale);
-                cfg.content_filter = cfg.content_filter.or(base_cfg.content_filter);
-                cfg.media_filter = cfg.media_filter.or(base_cfg.media_filter);
-                cfg.random = cfg.random.or(base_cfg.random);
-                cfg.limit = cfg.limit.or(base_cfg.limit);
-                Some(cfg)
-            }
+            (cfg, None) | (None, cfg) => cfg,
+            (Some(base_cfg), Some(other)) => base_cfg.merge(other),
         }
     }
 }
@@ -181,6 +175,32 @@ impl<'config> Config<'config> {
     pub const fn position(mut self, position: &'config str) -> Self {
         self.position = Some(position);
         self
+    }
+
+    #[must_use]
+    pub fn merge(mut self, other: Self) -> Option<Self> {
+        if let Some(country) = other.country {
+            self.country.replace(country);
+        }
+        if let Some(locale) = other.locale {
+            self.locale.replace(locale);
+        }
+        if let Some(content_filter) = other.content_filter {
+            self.content_filter.replace(content_filter);
+        }
+        if let Some(media_filter) = other.media_filter {
+            self.media_filter.replace(media_filter);
+        }
+        if let Some(random) = other.random {
+            self.random.replace(random);
+        }
+        if let Some(limit) = other.limit {
+            self.limit.replace(limit);
+        }
+        if let Some(position) = other.position {
+            self.position.replace(position);
+        }
+        Some(self)
     }
 }
 

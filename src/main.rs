@@ -1,14 +1,17 @@
 use std::env;
 
 use dotenv::dotenv;
+use poise::CreateReply;
 use serenity::all::GatewayIntents;
 use serenity::client::Client;
+use tracing::error;
 use tracing_subscriber::prelude::*;
 use url::Url;
 
 use crate::background_tasks::{
     start_anime_subscription, start_cache_trim, start_sleep_gif_updater,
 };
+use crate::commands::gifs::GifError;
 use crate::commands::CommandError;
 
 mod background_tasks;
@@ -24,6 +27,17 @@ struct SpiderBot<'tenor_config> {
 
 type Context<'a, 'tenor_config> = poise::Context<'a, SpiderBot<'tenor_config>, CommandError>;
 
+trait BotContextExt<'a, 'tenor_config> {
+    fn gif_context(&self) -> (&tenor::Client, &cache::Memory<[Url]>);
+}
+
+impl<'a, 'tenor_config> BotContextExt<'a, 'tenor_config> for Context<'a, 'tenor_config> {
+    fn gif_context(&self) -> (&tenor::Client, &cache::Memory<[Url]>) {
+        let context = self.data();
+        (&context.tenor, &context.gif_cache)
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let _ = dotenv();
@@ -33,11 +47,15 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let discord_token = env::var("DISCORD_TOKEN")?.leak();
-    let anime_url = resolve_env("ANIME_URL")?.leak();
+    let anime_url = match resolve_env("ANIME_URL") {
+        Ok(anime_url) => Some(anime_url.leak()),
+        Err(error) => {
+            error!("Failed to resolve ANIME_URL: {error}");
+            None
+        }
+    };
     let tenor_token = env::var("TENOR_TOKEN")?;
 
-    let pool = otaku::db::connect(env!("CARGO_PKG_NAME")).await?;
-    otaku::db::migrate(&pool).await?;
     // Login with a bot token from the environment
     let bot = SpiderBot {
         gif_cache: cache::Memory::new(),
@@ -57,6 +75,13 @@ async fn main() -> anyhow::Result<()> {
                 commands::gifs::play(),
                 commands::gifs::sleep(),
             ],
+            on_error: |error| {
+                Box::pin(async move {
+                    if let Err(e) = on_error(error).await {
+                        tracing::error!("Error while handling error: {}", e);
+                    }
+                })
+            },
             ..Default::default()
         })
         .setup(move |ctx, _ready, framework| {
@@ -71,7 +96,11 @@ async fn main() -> anyhow::Result<()> {
         .framework(framework)
         .await?;
 
-    start_anime_subscription(pool, anime_url, client.cache.clone(), client.http.clone());
+    if let Some(anime_url) = anime_url {
+        let pool = otaku::db::connect(env!("CARGO_PKG_NAME")).await?;
+        otaku::db::migrate(&pool).await?;
+        start_anime_subscription(pool, anime_url, client.cache.clone(), client.http.clone());
+    }
 
     let shard_manager = client.shard_manager.clone();
 
@@ -96,4 +125,26 @@ fn resolve_env(key: &str) -> anyhow::Result<String> {
         default_to_empty: true,
     };
     Ok(envmnt::expand(&key, Some(options)))
+}
+
+async fn on_error(
+    error: poise::FrameworkError<'_, SpiderBot<'_>, CommandError>,
+) -> Result<(), serenity::Error> {
+    match error {
+        poise::FrameworkError::Command { ctx, error, .. } => {
+            let error_message = match error {
+                CommandError::GifError(GifError::NoGifs | GifError::RestrictedQuery(_)) => {
+                    error.to_string()
+                }
+                _ => "Internal error".to_string(),
+            };
+            eprintln!("An error occurred in a command: {error}");
+            let msg = CreateReply::default()
+                .ephemeral(true)
+                .content(error_message);
+            ctx.send(msg).await?;
+            Ok(())
+        }
+        error => poise::builtins::on_error(error).await,
+    }
 }
