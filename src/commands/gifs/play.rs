@@ -65,7 +65,7 @@ static GAME_AUTOCOMPLETION: &[GameQuery] = &[
     },
 ];
 
-pub struct PlayCommandOutput {
+pub struct CommandOutput {
     pub message: String,
     pub gif: String,
 }
@@ -85,7 +85,7 @@ pub async fn get_command_output(
     gif_cache: &cache::Memory<[Url]>,
     mention: &str,
     game: Option<String>,
-) -> Result<PlayCommandOutput, GifError> {
+) -> Result<CommandOutput, GifError> {
     let query = match &game {
         None => Cow::Borrowed("games"),
         Some(game) => transform_query(game)?,
@@ -96,7 +96,7 @@ pub async fn get_command_output(
     } else {
         format!("{mention}! Let's play a game!")
     };
-    Ok(PlayCommandOutput { message, gif })
+    Ok(CommandOutput { message, gif })
 }
 
 pub async fn update_gif_cache(tenor: &tenor::Client<'_>, gif_cache: &cache::Memory<[Url]>) {
@@ -110,7 +110,7 @@ pub async fn update_gif_cache(tenor: &tenor::Client<'_>, gif_cache: &cache::Memo
 fn transform_query(input: &str) -> Result<Cow<'static, str>, GifError> {
     let query = GAME_AUTOCOMPLETION
         .iter()
-        .find(|GameQuery { query, .. }| query == &input);
+        .find(|GameQuery { name, .. }| name == &input);
     match query {
         Some(GameQuery { query, .. }) => Ok(Cow::Borrowed(query)),
         None if input.is_inappropriate() => Err(GifError::RestrictedQuery(input.to_string())),

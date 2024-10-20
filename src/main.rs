@@ -1,7 +1,6 @@
 use std::env;
 
 use dotenv::dotenv;
-use futures::future::err;
 use poise::CreateReply;
 use serenity::all::GatewayIntents;
 use serenity::client::Client;

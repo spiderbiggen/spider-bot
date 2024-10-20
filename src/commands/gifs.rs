@@ -16,7 +16,6 @@ use tenor::error::Error as TenorError;
 use tenor::models::{ContentFilter, Gif, MediaFilter};
 use tenor::Config;
 
-use crate::commands::gifs::play::PlayCommandOutput;
 use crate::commands::CommandError;
 use crate::Context;
 use crate::{cache, BotContextExt};
@@ -59,14 +58,9 @@ pub(crate) async fn play(
 ) -> Result<(), CommandError> {
     let mention = mention_or_here(user.as_ref());
     let (tenor, gif_cache) = ctx.gif_context();
-    let PlayCommandOutput { message, gif } =
-        play::get_command_output(tenor, gif_cache, &mention, game).await?;
-
-    ctx.reply(message).await?;
-    let gif_message = CreateMessage::new()
-        .flags(MessageFlags::SUPPRESS_NOTIFICATIONS)
-        .content(gif);
-    ctx.channel_id().send_message(ctx, gif_message).await?;
+    let output = play::get_command_output(tenor, gif_cache, &mention, game).await?;
+    ctx.reply(output.message).await?;
+    send_gif_message(ctx, output.gif).await?;
     Ok(())
 }
 
@@ -81,11 +75,7 @@ pub(crate) async fn hurry(
     let (tenor, gif_cache) = ctx.gif_context();
     let gif = get_gif(tenor, gif_cache, "hurry up", true).await?;
     ctx.reply(format!("{mention}! Hurry up!")).await?;
-
-    let gif_message = CreateMessage::new()
-        .flags(MessageFlags::SUPPRESS_NOTIFICATIONS)
-        .content(gif);
-    ctx.channel_id().send_message(ctx, gif_message).await?;
+    send_gif_message(ctx, gif).await?;
     Ok(())
 }
 
@@ -105,6 +95,14 @@ pub(crate) async fn morbin(ctx: Context<'_, '_>) -> Result<(), CommandError> {
 pub(crate) async fn sleep(ctx: Context<'_, '_>) -> Result<(), CommandError> {
     let gif = sleep::get_gif(&ctx.data().gif_cache).await?;
     ctx.reply(gif).await?;
+    Ok(())
+}
+
+async fn send_gif_message(ctx: Context<'_, '_>, gif: String) -> Result<(), serenity::Error> {
+    let gif_message = CreateMessage::new()
+        .flags(MessageFlags::SUPPRESS_NOTIFICATIONS)
+        .content(gif);
+    ctx.channel_id().send_message(ctx, gif_message).await?;
     Ok(())
 }
 

@@ -12,9 +12,6 @@ members = [
     "proto",
 ]
 
-[workspace.lints.rust]
-unsafe_code = "forbid"
-
 [workspace.lints.clippy]
 all = "deny"
 pedantic = "warn"

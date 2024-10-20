@@ -177,6 +177,7 @@ impl<'config> Config<'config> {
         self
     }
 
+    #[must_use]
     pub fn merge(mut self, other: Self) -> Option<Self> {
         if let Some(country) = other.country {
             self.country.replace(country);
