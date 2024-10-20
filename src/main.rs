@@ -1,5 +1,9 @@
 use std::env;
 
+use crate::background_tasks::{start_anime_subscription, start_cache_trim, start_gif_updater};
+use crate::commands::gifs::GifError;
+use crate::commands::CommandError;
+use consts::BASE_GIF_CONFIG;
 use dotenv::dotenv;
 use poise::CreateReply;
 use serenity::all::GatewayIntents;
@@ -8,34 +12,16 @@ use tracing::error;
 use tracing_subscriber::prelude::*;
 use url::Url;
 
-use crate::background_tasks::{
-    start_anime_subscription, start_cache_trim, start_sleep_gif_updater,
-};
-use crate::commands::gifs::GifError;
-use crate::commands::CommandError;
-
 mod background_tasks;
 mod cache;
 mod commands;
 mod consts;
+mod context;
 
 #[derive(Debug, Clone)]
 struct SpiderBot<'tenor_config> {
     gif_cache: cache::Memory<[Url]>,
     tenor: tenor::Client<'tenor_config>,
-}
-
-type Context<'a, 'tenor_config> = poise::Context<'a, SpiderBot<'tenor_config>, CommandError>;
-
-trait BotContextExt<'a, 'tenor_config> {
-    fn gif_context(&self) -> (&tenor::Client, &cache::Memory<[Url]>);
-}
-
-impl<'a, 'tenor_config> BotContextExt<'a, 'tenor_config> for Context<'a, 'tenor_config> {
-    fn gif_context(&self) -> (&tenor::Client, &cache::Memory<[Url]>) {
-        let context = self.data();
-        (&context.tenor, &context.gif_cache)
-    }
 }
 
 #[tokio::main]
@@ -59,10 +45,10 @@ async fn main() -> anyhow::Result<()> {
     // Login with a bot token from the environment
     let bot = SpiderBot {
         gif_cache: cache::Memory::new(),
-        tenor: tenor::Client::new(tenor_token),
+        tenor: tenor::Client::with_config(tenor_token, Some(BASE_GIF_CONFIG)),
     };
 
-    start_sleep_gif_updater(bot.tenor.clone(), bot.gif_cache.clone())?;
+    start_gif_updater(bot.tenor.clone(), bot.gif_cache.clone())?;
     start_cache_trim(bot.gif_cache.clone());
 
     let intents = GatewayIntents::non_privileged();

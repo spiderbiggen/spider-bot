@@ -19,7 +19,7 @@ use otaku::{Download, DownloadCollection, Subscribed, Subscriber};
 
 use crate::cache;
 use crate::commands::gifs;
-use crate::consts::CACHE_TRIM_INTERVAL;
+use crate::consts::SHORT_CACHE_LIFETIME;
 
 fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
     let start = Instant::now();
@@ -33,15 +33,16 @@ fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
     Ok(interval_at(best_effort_start, period))
 }
 
-pub(crate) fn start_sleep_gif_updater(
+pub(crate) fn start_gif_updater(
     tenor: tenor::Client<'static>,
     gif_cache: cache::Memory<[Url]>,
 ) -> anyhow::Result<()> {
+    let context = (tenor, gif_cache);
     let mut interval = interval_at_previous_period(Duration::from_secs(6 * 3600))?;
     tokio::spawn(async move {
         loop {
             interval.tick().await;
-            gifs::update_gif_cache(&tenor, &gif_cache).await;
+            gifs::update_gif_cache(&context).await;
         }
     });
     Ok(())
@@ -53,7 +54,7 @@ pub(crate) fn start_sleep_gif_updater(
 ///
 /// - `gif_cache` - the cache of GIFs
 pub(crate) fn start_cache_trim(gif_cache: cache::Memory<[Url]>) {
-    let mut interval = tokio::time::interval(CACHE_TRIM_INTERVAL);
+    let mut interval = tokio::time::interval(SHORT_CACHE_LIFETIME);
     tokio::spawn(async move {
         loop {
             interval.tick().await;

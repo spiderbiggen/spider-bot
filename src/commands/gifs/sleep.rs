@@ -1,10 +1,11 @@
 use crate::cache;
-use crate::commands::gifs::{GifError, BASE_GIF_CONFIG, GIF_COUNT};
+use crate::commands::gifs::GifError;
+use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
+use crate::context::{GifCacheExt, GifContextExt};
 use chrono::{Datelike, TimeDelta, Utc};
 use chrono::{Month, NaiveDate};
 use rand::prelude::SliceRandom;
 use rand::{thread_rng, Rng};
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::num::NonZeroU8;
 use std::sync::Arc;
@@ -12,7 +13,7 @@ use tenor::Config;
 use tracing::{debug, error, info, instrument, warn};
 use url::Url;
 
-const SLEEP_GIF_CONFIG: Config = BASE_GIF_CONFIG.random(true);
+const SLEEP_GIF_CONFIG: Config = super::RANDOM_CONFIG;
 
 macro_rules! const_nonzero_u8 {
     ($value:expr) => {{
@@ -67,23 +68,26 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
 };
 
 #[instrument(skip_all, err)]
-pub async fn get_gif(gif_cache: &cache::Memory<[Url]>) -> Result<Cow<'static, str>, GifError> {
+pub async fn get_gif(context: &impl GifCacheExt) -> Result<String, GifError> {
     let date = Utc::now().date_naive();
-    SLEEP_GIF_COLLECTION.current(date).get_gif(gif_cache).await
+    SLEEP_GIF_COLLECTION
+        .current(date)
+        .get_gif(context.gif_cache())
+        .await
 }
 
-pub async fn update_gif_cache(tenor: &tenor::Client<'_>, gif_cache: &cache::Memory<[Url]>) {
+pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
     let date = Utc::now().date_naive();
     for &Season { resolver, range } in SLEEP_GIF_COLLECTION.seasons {
         if !range.should_cache(date) {
             continue;
         }
-        if let Err(error) = update_sleep_resolver_cache(tenor, gif_cache, resolver).await {
+        if let Err(error) = update_sleep_resolver_cache(context, resolver).await {
             error!("Error caching gifs for {}: {error}", resolver.name);
         }
     }
     let resolver = SLEEP_GIF_COLLECTION.default;
-    if let Err(error) = update_sleep_resolver_cache(tenor, gif_cache, resolver).await {
+    if let Err(error) = update_sleep_resolver_cache(context, resolver).await {
         error!("Error caching gifs for {}: {error}", resolver.name);
     }
 }
@@ -188,19 +192,16 @@ impl<'a> GifCollection<'a> {
 
 impl<'a> GifResolver<'a> {
     #[instrument(skip_all, err)]
-    async fn get_gif(
-        &self,
-        gif_cache: &cache::Memory<[Url]>,
-    ) -> Result<Cow<'static, str>, GifError> {
+    async fn get_gif(&self, gif_cache: &cache::Memory<[Url]>) -> Result<String, GifError> {
         if let Some(query) = self.get_override() {
             debug!("Found gif override");
-            return Ok(Cow::Borrowed(query));
+            return Ok(query.to_string());
         }
         let collection = gif_cache.get(self.name).await.ok_or(GifError::NoGifs)?;
         let gif = collection
             .choose(&mut thread_rng())
             .ok_or(GifError::NoGifs)?;
-        Ok(gif.as_str().to_string().into())
+        Ok(gif.as_str().to_string())
     }
 
     #[must_use]
@@ -212,12 +213,12 @@ impl<'a> GifResolver<'a> {
 }
 
 async fn update_sleep_resolver_cache(
-    tenor: &tenor::Client<'_>,
-    gif_cache: &cache::Memory<[Url]>,
+    context: &impl GifContextExt<'_>,
     resolver: GifResolver<'_>,
 ) -> Result<(), GifError> {
     let max_capacity = resolver.queries.len() * usize::from(GIF_COUNT);
     let mut gif_collection: HashSet<Url> = HashSet::with_capacity(max_capacity);
+    let (tenor, gif_cache) = context.gif_context();
     for &query in resolver.queries {
         let gifs = tenor.search(query, Some(SLEEP_GIF_CONFIG)).await?;
         gif_collection.extend(gifs.into_iter().map(|gif| gif.url));
@@ -226,7 +227,9 @@ async fn update_sleep_resolver_cache(
     let urls: Arc<[Url]> = gif_collection.into_iter().collect();
     let gif_count = urls.len();
     info!(gif_count, "Putting \"{name}\" gifs into cache");
-    gif_cache.insert(name, urls).await;
+    gif_cache
+        .insert_with_duration(name, urls, LONG_CACHE_LIFETIME)
+        .await;
     Ok(())
 }
 

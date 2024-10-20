@@ -43,8 +43,9 @@ impl<T: ?Sized> Memory<T> {
             .map(|Key(_, value)| value.clone())
     }
 
+    #[expect(dead_code)]
     pub async fn insert(&self, key: impl Into<Cow<'static, str>>, value: impl Into<Arc<T>>) {
-        self.insert_with_duration(key, value, consts::CACHE_LIFETIME)
+        self.insert_with_duration(key, value, consts::SHORT_CACHE_LIFETIME)
             .await;
     }
 

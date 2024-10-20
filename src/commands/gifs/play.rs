@@ -1,10 +1,15 @@
-use crate::cache;
-use crate::commands::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS};
+use super::{cache_gifs, update_cached_gifs, GifSliceExt};
+use crate::commands::gifs::{get_cached_gif, GifError, MAX_AUTOCOMPLETE_RESULTS};
+use crate::consts::LONG_CACHE_LIFETIME;
+use crate::context::GifContextExt;
 use futures::{Stream, StreamExt};
 use rustrict::CensorStr;
 use std::borrow::Cow;
+use tenor::Config;
 use tracing::error;
-use url::Url;
+
+const FALLBACK_CONFIG: Config = super::RANDOM_CONFIG;
+static PLAY_FALLBACK: &str = "games";
 
 struct GameQuery {
     name: &'static str,
@@ -81,16 +86,24 @@ pub fn autocomplete(partial: &str) -> impl Stream<Item = &'static str> + '_ {
 }
 
 pub async fn get_command_output(
-    tenor: &tenor::Client<'_>,
-    gif_cache: &cache::Memory<[Url]>,
+    context: &impl GifContextExt<'_>,
     mention: &str,
     game: Option<String>,
 ) -> Result<CommandOutput, GifError> {
-    let query = match &game {
-        None => Cow::Borrowed("games"),
-        Some(game) => transform_query(game)?,
+    let gif = match &game {
+        None => get_cached_gif(context, PLAY_FALLBACK).await?,
+        Some(game) => {
+            let query = transform_query(game)?;
+            match get_cached_gif(context, &query).await {
+                Ok(gif) => gif,
+                Err(GifError::NoGifs) => {
+                    let gifs = update_cached_gifs(context, query.clone(), None).await?;
+                    gifs.take()?
+                }
+                Err(err) => Err(err)?,
+            }
+        }
     };
-    let gif = super::get_gif(tenor, gif_cache, query, false).await?;
     let message = if let Some(game) = &game {
         format!("{mention}! Let's play some {game}!")
     } else {
@@ -99,12 +112,22 @@ pub async fn get_command_output(
     Ok(CommandOutput { message, gif })
 }
 
-pub async fn update_gif_cache(tenor: &tenor::Client<'_>, gif_cache: &cache::Memory<[Url]>) {
+pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
+    let tenor = context.tenor();
     for GameQuery { query, .. } in GAME_AUTOCOMPLETION {
-        if let Err(error) = super::cache_gifs(tenor, gif_cache, Cow::Borrowed(query), false).await {
-            error!("Error caching gifs for {query}: {error}");
-        }
+        match tenor.search(query, None).await {
+            Ok(gifs) => {
+                cache_gifs(context, *query, gifs, LONG_CACHE_LIFETIME).await;
+            }
+            Err(error) => error!("Error caching gifs for {query}: {error}"),
+        };
     }
+    match tenor.search(PLAY_FALLBACK, Some(FALLBACK_CONFIG)).await {
+        Ok(gifs) => {
+            cache_gifs(context, PLAY_FALLBACK, gifs, LONG_CACHE_LIFETIME).await;
+        }
+        Err(error) => error!("Error caching gifs for {PLAY_FALLBACK}: {error}"),
+    };
 }
 
 fn transform_query(input: &str) -> Result<Cow<'static, str>, GifError> {
