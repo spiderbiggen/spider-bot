@@ -1,6 +1,9 @@
 mod play;
 mod sleep;
 
+use crate::commands::CommandError;
+use crate::consts::{LONG_CACHE_LIFETIME, SHORT_CACHE_LIFETIME};
+use crate::context::{Context, GifCacheExt, GifContextExt};
 use futures::Stream;
 use poise::serenity_prelude as serenity;
 use rand::seq::SliceRandom;
@@ -9,23 +12,17 @@ use serenity::all::MessageFlags;
 use serenity::{CreateMessage, Mentionable, User};
 use std::borrow::Cow;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use std::time::Duration;
+use tenor::error::Error as TenorError;
+use tenor::models::{Gif, MediaFilter};
+use tracing::{debug, error, info, instrument};
 use url::Url;
 
-use tenor::error::Error as TenorError;
-use tenor::models::{ContentFilter, Gif, MediaFilter};
-use tenor::Config;
-
-use crate::commands::CommandError;
-use crate::Context;
-use crate::{cache, BotContextExt};
-
-const GIF_COUNT: u8 = 25;
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
-const BASE_GIF_CONFIG: Config = Config::new()
-    .content_filter(ContentFilter::Medium)
-    .media_filter(&[MediaFilter::Gif])
-    .limit(GIF_COUNT);
+const RANDOM_CONFIG: tenor::Config = tenor::Config::new().random(true);
+
+static HURRY_QUERY: &str = "hurry up";
+static MORBIN_QUERY: &str = "morbin_time";
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum GifError {
@@ -35,6 +32,24 @@ pub(crate) enum GifError {
     RestrictedQuery(String),
     #[error("no gifs found")]
     NoGifs,
+}
+
+trait GifSliceExt {
+    fn take(&self) -> Result<String, GifError>;
+}
+
+impl GifSliceExt for &[Url] {
+    fn take(&self) -> Result<String, GifError> {
+        let url = self.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
+        Ok(url.as_str().into())
+    }
+}
+
+impl GifSliceExt for Arc<[Url]> {
+    fn take(&self) -> Result<String, GifError> {
+        let url = self.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
+        Ok(url.as_str().into())
+    }
 }
 
 // Allow this unused async because autocomplete functions need to be async
@@ -57,8 +72,7 @@ pub(crate) async fn play(
     game: Option<String>,
 ) -> Result<(), CommandError> {
     let mention = mention_or_here(user.as_ref());
-    let (tenor, gif_cache) = ctx.gif_context();
-    let output = play::get_command_output(tenor, gif_cache, &mention, game).await?;
+    let output = play::get_command_output(&ctx, &mention, game).await?;
     ctx.reply(output.message).await?;
     send_gif_message(ctx, output.gif).await?;
     Ok(())
@@ -72,8 +86,7 @@ pub(crate) async fn hurry(
     #[description = "Who should hurry up"] user: Option<User>,
 ) -> Result<(), CommandError> {
     let mention = mention_or_here(user.as_ref());
-    let (tenor, gif_cache) = ctx.gif_context();
-    let gif = get_gif(tenor, gif_cache, "hurry up", true).await?;
+    let gif = get_cached_gif(&ctx, HURRY_QUERY).await?;
     ctx.reply(format!("{mention}! Hurry up!")).await?;
     send_gif_message(ctx, gif).await?;
     Ok(())
@@ -83,8 +96,7 @@ pub(crate) async fn hurry(
 #[poise::command(slash_command)]
 /// It's Morbin time
 pub(crate) async fn morbin(ctx: Context<'_, '_>) -> Result<(), CommandError> {
-    let (tenor, gif_cache) = ctx.gif_context();
-    let gif = get_gif(tenor, gif_cache, "morbin_time", false).await?;
+    let gif = get_cached_gif(&ctx, MORBIN_QUERY).await?;
     ctx.reply(gif).await?;
     Ok(())
 }
@@ -93,7 +105,7 @@ pub(crate) async fn morbin(ctx: Context<'_, '_>) -> Result<(), CommandError> {
 #[poise::command(slash_command)]
 /// Posts a random good night GIF
 pub(crate) async fn sleep(ctx: Context<'_, '_>) -> Result<(), CommandError> {
-    let gif = sleep::get_gif(&ctx.data().gif_cache).await?;
+    let gif = sleep::get_gif(&ctx).await?;
     ctx.reply(gif).await?;
     Ok(())
 }
@@ -107,15 +119,22 @@ async fn send_gif_message(ctx: Context<'_, '_>, gif: String) -> Result<(), seren
 }
 
 #[instrument(skip_all)]
-pub(crate) async fn update_gif_cache(tenor: &tenor::Client<'_>, gif_cache: &cache::Memory<[Url]>) {
-    if let Err(error) = cache_gifs(tenor, gif_cache, Cow::Borrowed("hurry up"), true).await {
-        error!("Error caching gifs for hurry up: {error}");
+pub(crate) async fn update_gif_cache(context: &impl GifContextExt<'_>) {
+    let tenor = context.tenor();
+    match tenor.search(HURRY_QUERY, Some(RANDOM_CONFIG)).await {
+        Ok(gifs) => {
+            cache_gifs(context, HURRY_QUERY, gifs, LONG_CACHE_LIFETIME).await;
+        }
+        Err(error) => error!("Error caching gifs for {HURRY_QUERY}: {error}"),
     }
-    if let Err(error) = cache_gifs(tenor, gif_cache, Cow::Borrowed("morbin_time"), false).await {
-        error!("Error caching gifs for morbin_time: {error}");
+    match tenor.search(MORBIN_QUERY, None).await {
+        Ok(gifs) => {
+            cache_gifs(context, MORBIN_QUERY, gifs, LONG_CACHE_LIFETIME).await;
+        }
+        Err(error) => error!("Error caching gifs for {HURRY_QUERY}: {error}"),
     }
-    play::update_gif_cache(tenor, gif_cache).await;
-    sleep::update_gif_cache(tenor, gif_cache).await;
+    play::update_gif_cache(context).await;
+    sleep::update_gif_cache(context).await;
 }
 
 fn mention_or_here(user: Option<&User>) -> Cow<'static, str> {
@@ -124,29 +143,26 @@ fn mention_or_here(user: Option<&User>) -> Cow<'static, str> {
     })
 }
 
-async fn get_gif(
-    tenor: &tenor::Client<'_>,
-    gif_cache: &cache::Memory<[Url]>,
-    query: impl Into<Cow<'static, str>>,
-    random: bool,
-) -> Result<String, GifError> {
-    let gifs = get_gifs(tenor, gif_cache, query, random).await?;
-    let url = gifs.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
-    Ok(url.as_str().into())
+async fn get_cached_gif(context: &impl GifContextExt<'_>, query: &str) -> Result<String, GifError> {
+    let cached = get_cached_gifs(context, query)
+        .await
+        .ok_or(GifError::NoGifs)?;
+    cached.take()
 }
 
-async fn get_gifs(
-    tenor: &tenor::Client<'_>,
-    gif_cache: &cache::Memory<[Url]>,
+async fn get_cached_gifs(context: &impl GifContextExt<'_>, query: &str) -> Option<Arc<[Url]>> {
+    let option = context.gif_cache().get(query).await;
+    option.inspect(|_| debug!("Found \"{query}\" gifs in cache "))
+}
+
+async fn update_cached_gifs(
+    context: &impl GifContextExt<'_>,
     query: impl Into<Cow<'static, str>>,
-    random: bool,
+    config: Option<tenor::Config<'_>>,
 ) -> Result<Arc<[Url]>, GifError> {
     let query = query.into();
-    if let Some(gifs) = gif_cache.get(&query).await {
-        info!("Found \"{query}\" gifs in cache ");
-        return Ok(gifs);
-    }
-    cache_gifs(tenor, gif_cache, query, random).await
+    let gifs = context.tenor().search(&query, config).await?;
+    Ok(cache_gifs(context, query, gifs, SHORT_CACHE_LIFETIME).await)
 }
 
 fn map_gif_to_url(mut gif: Gif) -> Url {
@@ -156,16 +172,17 @@ fn map_gif_to_url(mut gif: Gif) -> Url {
 }
 
 async fn cache_gifs(
-    tenor: &tenor::Client<'_>,
-    gif_cache: &cache::Memory<[Url]>,
-    query: Cow<'static, str>,
-    random: bool,
-) -> Result<Arc<[Url]>, GifError> {
-    let config = BASE_GIF_CONFIG.random(random);
-    let gifs = tenor.search(&query, Some(config)).await?;
+    context: &impl GifCacheExt,
+    key: impl Into<Cow<'static, str>>,
+    gifs: impl IntoIterator<Item = Gif>,
+    duration: Duration,
+) -> Arc<[Url]> {
+    let key = key.into();
     let urls: Arc<[Url]> = gifs.into_iter().map(map_gif_to_url).collect();
-    let gif_count = urls.len();
-    info!(gif_count, "Putting \"{query}\" gifs into cache");
-    gif_cache.insert(query, urls.clone()).await;
-    Ok(urls)
+    info!(gif_count = urls.len(), "Putting \"{key}\" gifs into cache");
+    context
+        .gif_cache()
+        .insert_with_duration(key, urls.clone(), duration)
+        .await;
+    urls
 }
