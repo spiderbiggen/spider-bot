@@ -76,9 +76,10 @@ pub struct CommandOutput {
 }
 
 pub fn autocomplete(partial: &str) -> impl Stream<Item = &'static str> + '_ {
+    let lower_partial = partial.to_lowercase();
     futures::stream::iter(GAME_AUTOCOMPLETION)
         .filter(move |GameQuery { matches, .. }| {
-            futures::future::ready(matches.iter().any(|s| s.starts_with(partial)))
+            futures::future::ready(matches.iter().any(|s| s.starts_with(&lower_partial)))
         })
         .map(|&GameQuery { name, .. }| futures::future::ready(name))
         .buffered(MAX_AUTOCOMPLETE_RESULTS)

@@ -45,7 +45,7 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
                 numerator: 1,
                 denominator: 150,
             }),
-            queries: &["halloweensleep", "spookysleep", "horrorsleep"],
+            queries: &["halloween_sleep", "spooky_sleep", "horror_sleep"],
         },
     }],
     default: GifResolver {
@@ -57,12 +57,13 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
         }),
         queries: &[
             "sleep",
-            "dogsleep",
-            "catsleep",
-            "rabbitsleep",
-            "ratsleep",
-            "ducksleep",
-            "animalsleep",
+            "dog_sleep",
+            "cat_sleep",
+            "rabbit_sleep",
+            "rat_sleep",
+            "duck_sleep",
+            "sheep_sleep",
+            "animal_sleep",
         ],
     },
 };
