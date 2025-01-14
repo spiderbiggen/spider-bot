@@ -19,19 +19,19 @@ pub(crate) trait GifContextExt<'tenor_config>:
     fn gif_context(&self) -> (&tenor::Client<'tenor_config>, &cache::Memory<[Url]>);
 }
 
-impl<'a, 'tenor_config> TenorExt<'tenor_config> for Context<'a, 'tenor_config> {
+impl<'tenor_config> TenorExt<'tenor_config> for Context<'_, 'tenor_config> {
     fn tenor(&self) -> &tenor::Client<'tenor_config> {
         &self.framework().user_data.tenor
     }
 }
 
-impl<'a, 'tenor_config> GifCacheExt for Context<'a, 'tenor_config> {
+impl GifCacheExt for Context<'_, '_> {
     fn gif_cache(&self) -> &cache::Memory<[Url]> {
         &self.framework().user_data.gif_cache
     }
 }
 
-impl<'a, 'tenor_config> GifContextExt<'tenor_config> for Context<'a, 'tenor_config> {
+impl<'tenor_config> GifContextExt<'tenor_config> for Context<'_, 'tenor_config> {
     fn gif_context(&self) -> (&tenor::Client<'tenor_config>, &cache::Memory<[Url]>) {
         let context = self.framework().user_data;
         (&context.tenor, &context.gif_cache)

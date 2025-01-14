@@ -176,7 +176,7 @@ struct Season<'a> {
 
 type CollectionData<'a> = &'a [&'a str];
 
-impl<'a> GifCollection<'a> {
+impl GifCollection<'_> {
     #[must_use]
     #[instrument(skip_all)]
     fn current(&self, date: NaiveDate) -> GifResolver {
@@ -191,7 +191,7 @@ impl<'a> GifCollection<'a> {
     }
 }
 
-impl<'a> GifResolver<'a> {
+impl GifResolver<'_> {
     #[instrument(skip_all, err)]
     async fn get_gif(&self, gif_cache: &cache::Memory<[Url]>) -> Result<String, GifError> {
         if let Some(query) = self.get_override() {
