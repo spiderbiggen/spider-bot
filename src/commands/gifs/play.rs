@@ -64,9 +64,9 @@ static GAME_AUTOCOMPLETION: &[GameQuery] = &[
         matches: &["rimworld"],
     },
     GameQuery {
-        name: "Sid Meier's Civilization VI",
+        name: "Sid Meier's Civilization VII",
         query: "civilization",
-        matches: &["civilization", "sid meier's civilization vi"],
+        matches: &["civilization", "sid meier's civilization vii", "sid meier's civilization 7"],
     },
 ];
 
