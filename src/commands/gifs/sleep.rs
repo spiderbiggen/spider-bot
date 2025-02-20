@@ -4,8 +4,8 @@ use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
 use crate::context::{GifCacheExt, GifContextExt};
 use chrono::{Datelike, TimeDelta, Utc};
 use chrono::{Month, NaiveDate};
-use rand::prelude::SliceRandom;
-use rand::{Rng, thread_rng};
+use rand::Rng;
+use rand::prelude::*;
 use std::collections::HashSet;
 use std::num::NonZeroU8;
 use std::sync::Arc;
@@ -200,7 +200,7 @@ impl GifResolver<'_> {
         }
         let collection = gif_cache.get(self.name).await.ok_or(GifError::NoGifs)?;
         let gif = collection
-            .choose(&mut thread_rng())
+            .choose(&mut rand::rng())
             .ok_or(GifError::NoGifs)?;
         Ok(gif.as_str().to_string())
     }
@@ -208,7 +208,7 @@ impl GifResolver<'_> {
     #[must_use]
     fn get_override(&self) -> Option<&'static str> {
         self.ratio_override
-            .filter(|ratio| thread_rng().gen_ratio(ratio.numerator, ratio.denominator))
+            .filter(|ratio| rand::rng().random_ratio(ratio.numerator, ratio.denominator))
             .map(|query| query.query)
     }
 }
