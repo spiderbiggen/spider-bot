@@ -1,5 +1,5 @@
 use crate::commands::CommandError;
-use crate::{cache, SpiderBot};
+use crate::{SpiderBot, cache};
 use url::Url;
 
 pub(crate) type Context<'a, 'tenor_config> =

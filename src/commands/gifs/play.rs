@@ -1,5 +1,5 @@
-use super::{cache_gifs, update_cached_gifs, GifSliceExt};
-use crate::commands::gifs::{get_cached_gif, GifError, MAX_AUTOCOMPLETE_RESULTS};
+use super::{GifSliceExt, cache_gifs, update_cached_gifs};
+use crate::commands::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS, get_cached_gif};
 use crate::consts::LONG_CACHE_LIFETIME;
 use crate::context::GifContextExt;
 use futures::{Stream, StreamExt};
@@ -66,7 +66,11 @@ static GAME_AUTOCOMPLETION: &[GameQuery] = &[
     GameQuery {
         name: "Sid Meier's Civilization VII",
         query: "civilization",
-        matches: &["civilization", "sid meier's civilization vii", "sid meier's civilization 7"],
+        matches: &[
+            "civilization",
+            "sid meier's civilization vii",
+            "sid meier's civilization 7",
+        ],
     },
 ];
 

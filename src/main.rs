@@ -1,8 +1,8 @@
 use std::env;
 
 use crate::background_tasks::{start_anime_subscription, start_cache_trim, start_gif_updater};
-use crate::commands::gifs::GifError;
 use crate::commands::CommandError;
+use crate::commands::gifs::GifError;
 use consts::BASE_GIF_CONFIG;
 use dotenv::dotenv;
 use poise::CreateReply;

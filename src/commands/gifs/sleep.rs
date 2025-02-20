@@ -5,7 +5,7 @@ use crate::context::{GifCacheExt, GifContextExt};
 use chrono::{Datelike, TimeDelta, Utc};
 use chrono::{Month, NaiveDate};
 use rand::prelude::SliceRandom;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use std::collections::HashSet;
 use std::num::NonZeroU8;
 use std::sync::Arc;

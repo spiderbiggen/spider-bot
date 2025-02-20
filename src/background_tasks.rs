@@ -9,8 +9,8 @@ use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::ChannelId;
-use tokio::sync::mpsc::{channel, Receiver};
-use tokio::time::{interval_at, Instant, Interval};
+use tokio::sync::mpsc::{Receiver, channel};
+use tokio::time::{Instant, Interval, interval_at};
 use tracing::{error, info, instrument};
 use url::Url;
 

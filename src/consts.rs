@@ -1,6 +1,6 @@
 use std::time::Duration;
-use tenor::models::{ContentFilter, MediaFilter};
 use tenor::Config;
+use tenor::models::{ContentFilter, MediaFilter};
 
 pub(crate) const SHORT_CACHE_LIFETIME: Duration = Duration::from_secs(3600);
 pub(crate) const LONG_CACHE_LIFETIME: Duration = Duration::from_secs(24 * 3600);

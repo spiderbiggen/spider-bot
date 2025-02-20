@@ -6,11 +6,11 @@ use std::time::Duration;
 
 use futures_util::TryStreamExt;
 use prost_types::Timestamp;
+use sqlx::Postgres;
 use sqlx::pool::Pool;
 use sqlx::types::chrono::{DateTime, Utc};
-use sqlx::Postgres;
-use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::error::SendError;
 use tonic::codec::CompressionEncoding;
 use tracing::{debug, error, info, instrument};
 
