@@ -131,7 +131,7 @@ pub(crate) async fn update_gif_cache(context: &impl GifContextExt<'_>) {
         Ok(gifs) => {
             cache_gifs(context, MORBIN_QUERY, gifs, LONG_CACHE_LIFETIME).await;
         }
-        Err(error) => error!("Error caching gifs for {HURRY_QUERY}: {error}"),
+        Err(error) => error!("Error caching gifs for {MORBIN_QUERY}: {error}"),
     }
     play::update_gif_cache(context).await;
     sleep::update_gif_cache(context).await;
