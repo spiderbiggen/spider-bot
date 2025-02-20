@@ -6,8 +6,7 @@ use crate::consts::{LONG_CACHE_LIFETIME, SHORT_CACHE_LIFETIME};
 use crate::context::{Context, GifCacheExt, GifContextExt};
 use futures::Stream;
 use poise::serenity_prelude as serenity;
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::prelude::*;
 use serenity::all::MessageFlags;
 use serenity::{CreateMessage, Mentionable, User};
 use std::borrow::Cow;
@@ -41,7 +40,7 @@ trait GifSliceExt {
 
 impl GifSliceExt for &[Url] {
     fn take(&self) -> Result<String, GifError> {
-        let url = self.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
+        let url = self.choose(&mut rand::rng()).ok_or(GifError::NoGifs)?;
         Ok(url.to_string())
     }
 }

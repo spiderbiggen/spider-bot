@@ -1,3 +1,5 @@
+extern crate core;
+
 use std::env;
 
 use crate::background_tasks::{start_anime_subscription, start_cache_trim, start_gif_updater};
