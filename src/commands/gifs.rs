@@ -11,6 +11,7 @@ use rand::thread_rng;
 use serenity::all::MessageFlags;
 use serenity::{CreateMessage, Mentionable, User};
 use std::borrow::Cow;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use tenor::error::Error as TenorError;
@@ -41,14 +42,14 @@ trait GifSliceExt {
 impl GifSliceExt for &[Url] {
     fn take(&self) -> Result<String, GifError> {
         let url = self.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
-        Ok(url.as_str().into())
+        Ok(url.to_string())
     }
 }
 
 impl GifSliceExt for Arc<[Url]> {
     fn take(&self) -> Result<String, GifError> {
-        let url = self.choose(&mut thread_rng()).ok_or(GifError::NoGifs)?;
-        Ok(url.as_str().into())
+        let slice: &[Url] = self;
+        slice.take()
     }
 }
 
@@ -57,7 +58,7 @@ impl GifSliceExt for Arc<[Url]> {
 async fn play_autocomplete<'a>(
     _: Context<'_, '_>,
     partial: &'a str,
-) -> impl Stream<Item = &'static str> + 'a {
+) -> impl Stream<Item = &'static str> + use<'a> {
     play::autocomplete(partial)
 }
 
@@ -144,15 +145,13 @@ fn mention_or_here(user: Option<&User>) -> Cow<'static, str> {
 }
 
 async fn get_cached_gif(context: &impl GifContextExt<'_>, query: &str) -> Result<String, GifError> {
-    let cached = get_cached_gifs(context, query)
-        .await
-        .ok_or(GifError::NoGifs)?;
-    cached.take()
-}
-
-async fn get_cached_gifs(context: &impl GifContextExt<'_>, query: &str) -> Option<Arc<[Url]>> {
-    let option = context.gif_cache().get(query).await;
-    option.inspect(|_| debug!("Found \"{query}\" gifs in cache "))
+    match context.gif_cache().get(query).await {
+        Some(cached) => {
+            debug!(r#"Found "{query}" gifs in cache"#);
+            cached.deref().take()
+        }
+        None => Err(GifError::NoGifs),
+    }
 }
 
 async fn update_cached_gifs(
@@ -179,7 +178,7 @@ async fn cache_gifs(
 ) -> Arc<[Url]> {
     let key = key.into();
     let urls: Arc<[Url]> = gifs.into_iter().map(map_gif_to_url).collect();
-    info!(gif_count = urls.len(), "Putting \"{key}\" gifs into cache");
+    info!(gif_count = urls.len(), r#"Putting "{key}" gifs into cache"#);
     context
         .gif_cache()
         .insert_with_duration(key, urls.clone(), duration)

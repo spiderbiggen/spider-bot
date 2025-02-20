@@ -2,7 +2,7 @@
 name = "spider-bot"
 version = "0.2.8"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
-edition = "2021"
+edition = "2024"
 description = "Discord bot for the 'Turtle Force' discord"
 
 [workspace]
