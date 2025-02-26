@@ -2,7 +2,6 @@ use super::{GifSliceExt, cache_gifs, update_cached_gifs};
 use crate::commands::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS, get_cached_gif};
 use crate::consts::LONG_CACHE_LIFETIME;
 use crate::context::GifContextExt;
-use futures::{Stream, StreamExt};
 use rustrict::CensorStr;
 use std::borrow::Cow;
 use tenor::Config;
@@ -79,15 +78,14 @@ pub struct CommandOutput {
     pub gif: String,
 }
 
-pub fn autocomplete(partial: &str) -> impl Stream<Item = &'static str> + '_ {
-    let lower_partial = partial.to_lowercase();
-    futures::stream::iter(GAME_AUTOCOMPLETION)
-        .filter(move |GameQuery { matches, .. }| {
-            futures::future::ready(matches.iter().any(|s| s.starts_with(&lower_partial)))
-        })
-        .map(|&GameQuery { name, .. }| futures::future::ready(name))
-        .buffered(MAX_AUTOCOMPLETE_RESULTS)
+pub fn autocomplete(partial: &str) -> Vec<&'static str> {
+    let lower_partial = &partial.to_lowercase();
+    GAME_AUTOCOMPLETION
+        .iter()
+        .filter(|GameQuery { matches, .. }| matches.iter().any(|s| s.starts_with(lower_partial)))
+        .map(|&GameQuery { name, .. }| name)
         .take(MAX_AUTOCOMPLETE_RESULTS)
+        .collect()
 }
 
 pub async fn get_command_output(

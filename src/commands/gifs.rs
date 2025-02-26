@@ -4,7 +4,6 @@ mod sleep;
 use crate::commands::CommandError;
 use crate::consts::{LONG_CACHE_LIFETIME, SHORT_CACHE_LIFETIME};
 use crate::context::{Context, GifCacheExt, GifContextExt};
-use futures::Stream;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
 use serenity::all::MessageFlags;
@@ -13,7 +12,6 @@ use std::borrow::Cow;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
-use tenor::error::Error as TenorError;
 use tenor::models::{Gif, MediaFilter};
 use tracing::{debug, error, info, instrument};
 use url::Url;
@@ -21,13 +19,13 @@ use url::Url;
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
 const RANDOM_CONFIG: tenor::Config = tenor::Config::new().random(true);
 
-static HURRY_QUERY: &str = "hurry up";
-static MORBIN_QUERY: &str = "morbin_time";
+const HURRY_QUERY: &str = "hurry up";
+const MORBIN_QUERY: &str = "morbin_time";
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum GifError {
     #[error(transparent)]
-    Tenor(#[from] TenorError),
+    Tenor(#[from] tenor::error::Error),
     #[error("The query \"{0}\" was not allowed")]
     RestrictedQuery(String),
     #[error("no gifs found")]
@@ -38,27 +36,21 @@ trait GifSliceExt {
     fn take(&self) -> Result<String, GifError>;
 }
 
-impl GifSliceExt for &[Url] {
+impl<T> GifSliceExt for T
+where
+    T: AsRef<[Url]>,
+{
     fn take(&self) -> Result<String, GifError> {
-        let url = self.choose(&mut rand::rng()).ok_or(GifError::NoGifs)?;
+        let url = self
+            .as_ref()
+            .choose(&mut rand::rng())
+            .ok_or(GifError::NoGifs)?;
         Ok(url.to_string())
     }
 }
 
-impl GifSliceExt for Arc<[Url]> {
-    fn take(&self) -> Result<String, GifError> {
-        let slice: &[Url] = self;
-        slice.take()
-    }
-}
-
-// Allow this unused async because autocomplete functions need to be async
-#[allow(clippy::unused_async)]
-async fn play_autocomplete<'a>(
-    _: Context<'_, '_>,
-    partial: &'a str,
-) -> impl Stream<Item = &'static str> + use<'a> {
-    play::autocomplete(partial)
+fn play_autocomplete(_: Context<'_, '_>, partial: &str) -> impl Future<Output = Vec<&'static str>> {
+    futures::future::ready(play::autocomplete(partial))
 }
 
 #[instrument(skip_all)]
