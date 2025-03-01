@@ -45,8 +45,8 @@ pub(crate) async fn transfer(
     let result = db
         .transfer_user_balance(guild_id, from_user_id, user.id.get(), i64::from(amount))
         .await;
-    let to_name = &user.name;
-    let from_name = &from_user.name;
+    let to_name = &user.display_name();
+    let from_name = &from_user.display_name();
     let (message, ephemeral) = match result {
         Ok((from_balance, to_balance)) => {
             let message = format!(
