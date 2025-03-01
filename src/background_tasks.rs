@@ -14,8 +14,8 @@ use tokio::time::{Instant, Interval, interval_at};
 use tracing::{error, info, instrument};
 use url::Url;
 
-use otaku::db::Pool;
-use otaku::{Download, DownloadCollection, Subscribed, Subscriber};
+use db::BotDatabase;
+use domain::{Download, DownloadCollection, Subscribed, Subscriber};
 
 use crate::cache;
 use crate::commands::gifs;
@@ -67,18 +67,18 @@ pub(crate) fn start_cache_trim(gif_cache: cache::Memory<[Url]>) {
 ///
 /// ### Arguments
 ///
-/// - `pool` - the database connection pool
+/// - `db` - the database connection
 /// - `anime_url` - the base url of the anime api
 /// - `discord` - the discord http client and cache
 pub(crate) fn start_anime_subscription(
-    pool: Pool,
+    db: BotDatabase,
     anime_url: &'static str,
     discord_cache: Arc<Cache>,
     discord_http: Arc<Http>,
 ) {
     let (tx, rx) = channel(16);
 
-    tokio::spawn(otaku::subscribe(anime_url, pool, tx));
+    tokio::spawn(otaku::subscribe(anime_url, db, tx));
     tokio::spawn(embed_sender(discord_cache, discord_http, rx));
 }
 

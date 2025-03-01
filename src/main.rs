@@ -6,6 +6,7 @@ use crate::background_tasks::{start_anime_subscription, start_cache_trim, start_
 use crate::commands::CommandError;
 use crate::commands::gifs::GifError;
 use consts::BASE_GIF_CONFIG;
+use db::DatabaseConnection;
 use dotenv::dotenv;
 use poise::CreateReply;
 use serenity::all::GatewayIntents;
@@ -43,6 +44,9 @@ async fn main() -> anyhow::Result<()> {
         }
     };
     let tenor_token = env::var("TENOR_TOKEN")?;
+
+    let database = db::connect(env!("CARGO_PKG_NAME")).await?;
+    database.migrate().await?;
 
     // Login with a bot token from the environment
     let bot = SpiderBot {
@@ -85,9 +89,12 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     if let Some(anime_url) = anime_url {
-        let pool = otaku::db::connect(env!("CARGO_PKG_NAME")).await?;
-        otaku::db::migrate(&pool).await?;
-        start_anime_subscription(pool, anime_url, client.cache.clone(), client.http.clone());
+        start_anime_subscription(
+            database,
+            anime_url,
+            client.cache.clone(),
+            client.http.clone(),
+        );
     }
 
     let shard_manager = client.shard_manager.clone();

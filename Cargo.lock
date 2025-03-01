@@ -509,6 +509,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
 
 [[package]]
+name = "db"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "domain",
+ "futures-util",
+ "sqlx",
+ "thiserror 2.0.11",
+ "tracing",
+]
+
+[[package]]
 name = "der"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -568,6 +580,13 @@ name = "doc-comment"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
+
+[[package]]
+name = "domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+]
 
 [[package]]
 name = "dotenv"
@@ -1632,12 +1651,14 @@ checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
 name = "otaku"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
+ "chrono",
+ "db",
+ "domain",
  "futures-util",
  "prost-types",
  "proto",
- "sqlx",
  "thiserror 2.0.11",
  "tokio",
  "tonic",
@@ -1878,10 +1899,13 @@ dependencies = [
 
 [[package]]
 name = "proto"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
+ "chrono",
+ "domain",
  "prost",
  "prost-types",
+ "thiserror 2.0.11",
  "tonic",
  "tonic-build",
 ]
@@ -2577,10 +2601,12 @@ dependencies = [
 
 [[package]]
 name = "spider-bot"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "chrono",
+ "db",
+ "domain",
  "dotenv",
  "envmnt",
  "futures",

@@ -1,6 +1,6 @@
 [package]
 name = "otaku"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,14 +10,14 @@ workspace = true
 
 [dependencies]
 proto = { path = "../proto" }
+domain = { path = "../domain" }
+db = { path = "../db" }
 
+chrono = { workspace = true }
 futures-util = "0.3.28"
 prost-types = "0.13.2"
-thiserror = "2.0.0"
-tokio = "1"
+thiserror = { workspace = true }
+tokio = { workspace = true }
 tonic = { version = "0.12.2", features = ["gzip"] }
-tracing = "0.1.40"
+tracing = { workspace = true }
 
-[dependencies.sqlx]
-version = "0.8.1"
-features = ["postgres", "runtime-tokio-rustls", "chrono", "uuid"]

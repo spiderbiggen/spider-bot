@@ -1,16 +1,12 @@
 [package]
 name = "spider-bot"
-version = "0.2.8"
+version = "0.2.9"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2024"
 description = "Discord bot for the 'Turtle Force' discord"
 
 [workspace]
-members = [
-    "tenor",
-    "otaku",
-    "proto",
-]
+members = ["db", "domain", "otaku", "proto", "tenor"]
 
 [workspace.lints.clippy]
 all = "deny"
@@ -20,22 +16,32 @@ pedantic = "warn"
 [lints]
 workspace = true
 
+[workspace.dependencies]
+chrono = "0.4.38"
+thiserror = "2.0.0"
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tracing = "0.1.37"
+url = "2.5.2"
+
 [dependencies]
+db = { path = "db" }
+domain = { path = "domain" }
 otaku = { path = "otaku" }
 tenor = { path = "tenor" }
 
 anyhow = "1.0.86"
-chrono = "0.4.38"
+chrono = { workspace = true }
 dotenv = "0.15.0"
 envmnt = "0.10.4"
 futures = "0.3.21"
 poise = "0.6.1"
 rand = "0.9.0"
 rustrict = "0.7.31"
-thiserror = "2.0.0"
-tracing = "0.1.37"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-url = "2.5.2"
+url = { workspace = true }
 
 [dependencies.serenity]
 version = "0.12.2"
@@ -50,15 +56,6 @@ features = [
     "http",
     "utils",
     "rustls_backend"
-]
-
-[dependencies.tokio]
-version = "1.40.0"
-features = [
-    "macros",
-    "rt-multi-thread",
-    "signal",
-    "time"
 ]
 
 [profile.dev.package.sqlx-macros]

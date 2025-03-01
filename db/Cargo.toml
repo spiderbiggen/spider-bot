@@ -1,0 +1,21 @@
+[package]
+name = "db"
+version = "0.1.0"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+domain = { path = "../domain" }
+
+chrono = { workspace = true }
+futures-util = "0.3.28"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dependencies.sqlx]
+version = "0.8.1"
+features = ["postgres", "runtime-tokio-rustls", "chrono", "uuid"]
+
+
