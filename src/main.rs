@@ -6,7 +6,7 @@ use crate::background_tasks::{start_anime_subscription, start_cache_trim, start_
 use crate::commands::CommandError;
 use crate::commands::gifs::GifError;
 use consts::BASE_GIF_CONFIG;
-use db::DatabaseConnection;
+use db::{BotDatabase, DatabaseConnection};
 use dotenv::dotenv;
 use poise::CreateReply;
 use serenity::all::GatewayIntents;
@@ -25,6 +25,7 @@ mod context;
 struct SpiderBot<'tenor_config> {
     gif_cache: cache::Memory<[Url]>,
     tenor: tenor::Client<'tenor_config>,
+    database: BotDatabase,
 }
 
 #[tokio::main]
@@ -52,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
     let bot = SpiderBot {
         gif_cache: cache::Memory::new(),
         tenor: tenor::Client::with_config(tenor_token, Some(BASE_GIF_CONFIG)),
+        database: database.clone(),
     };
 
     start_gif_updater(bot.tenor.clone(), bot.gif_cache.clone())?;
@@ -66,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::gifs::morbin(),
                 commands::gifs::play(),
                 commands::gifs::sleep(),
+                commands::true_coin::coin(),
             ],
             on_error: |error| {
                 Box::pin(async move {

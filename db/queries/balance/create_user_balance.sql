@@ -1,0 +1,1 @@
+INSERT INTO user_balance (guild_id, user_id, balance) VALUES ($1, $2, $3);

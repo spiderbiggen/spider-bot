@@ -1,8 +1,8 @@
 use domain::Subscriber;
 use futures_util::TryStreamExt;
-use sqlx::Postgres;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::sqlx_macros::migrate;
+use sqlx::{Executor, Postgres};
 use std::num::ParseIntError;
 use std::ops::Deref;
 use tracing::instrument;
@@ -15,6 +15,20 @@ pub enum Error {
     Sqlx(#[from] sqlx::Error),
     #[error("{0} for {1}")]
     ParseInt(#[source] ParseIntError, &'static str),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum BalanceTransactionError {
+    #[error(transparent)]
+    Sqlx(#[from] sqlx::Error),
+    #[error(transparent)]
+    Base(#[from] Error),
+    #[error("insufficient balance: {0}")]
+    InsufficientBalance(i64),
+    #[error("sender did not exist")]
+    SenderUninitialized,
+    #[error("recipient did not exist")]
+    RecipientUninitialized,
 }
 
 pub trait DatabaseConnection {
@@ -32,22 +46,46 @@ pub trait DatabaseConnection {
     ///
     /// # Errors
     ///
-    /// Returns an error when the database cannot be reached,
-    /// contains invalid data or returns no results.
+    /// Returns an error when the database cannot be reached or contains invalid data
     fn get_subscribers(
         &self,
         title: &str,
     ) -> impl Future<Output = Result<Option<Vec<Subscriber>>, Self::Error>>;
 }
 
-#[derive(Debug, Clone)]
-pub struct BotDatabase(PgPool);
+pub trait UserBalanceConnection {
+    type Error: std::error::Error;
 
-impl Deref for BotDatabase {
-    type Target = PgPool;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+    fn create_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        initial_value: i64,
+    ) -> impl Future<Output = Result<(), Self::Error>>;
+
+    fn get_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+    ) -> impl Future<Output = Result<Option<i64>, Self::Error>>;
+
+    fn add_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        value: i64,
+    ) -> impl Future<Output = Result<i64, Self::Error>>;
+}
+
+pub trait UserBalanceTransaction {
+    type Error: std::error::Error;
+    fn transfer_user_balance(
+        &self,
+        guild_id: u64,
+        from: u64,
+        to: u64,
+        value: i64,
+    ) -> impl Future<Output = Result<(i64, i64), Self::Error>>;
 }
 
 fn opts(name: &str) -> (PgConnectOptions, PgPoolOptions) {
@@ -65,6 +103,16 @@ pub async fn connect(name: &str) -> Result<BotDatabase, sqlx::Error> {
     let (connect_opts, pool_opts) = opts(name);
     let pool = pool_opts.connect_with(connect_opts).await?;
     Ok(BotDatabase(pool))
+}
+
+#[derive(Debug, Clone)]
+pub struct BotDatabase(PgPool);
+
+impl Deref for BotDatabase {
+    type Target = PgPool;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl DatabaseConnection for BotDatabase {
@@ -100,4 +148,127 @@ impl DatabaseConnection for BotDatabase {
         }
         Ok(Some(channels))
     }
+}
+
+impl UserBalanceConnection for BotDatabase {
+    type Error = Error;
+
+    async fn create_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        initial_value: i64,
+    ) -> Result<(), Self::Error> {
+        create_user_balance(&**self, guild_id, user_id, initial_value).await
+    }
+
+    async fn get_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+    ) -> Result<Option<i64>, Self::Error> {
+        get_user_balance(&**self, guild_id, user_id).await
+    }
+
+    async fn add_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        value: i64,
+    ) -> Result<i64, Self::Error> {
+        add_user_balance(&**self, guild_id, user_id, value).await
+    }
+}
+
+impl UserBalanceTransaction for BotDatabase {
+    type Error = BalanceTransactionError;
+
+    async fn transfer_user_balance(
+        &self,
+        guild_id: u64,
+        from: u64,
+        to: u64,
+        value: i64,
+    ) -> Result<(i64, i64), Self::Error> {
+        let mut transaction = self.begin().await?;
+        let Some(from_balance) = get_user_balance(&mut *transaction, guild_id, from).await? else {
+            return Err(BalanceTransactionError::SenderUninitialized);
+        };
+        if from_balance < value {
+            return Err(BalanceTransactionError::InsufficientBalance(from_balance));
+        }
+        if get_user_balance(&mut *transaction, guild_id, to)
+            .await?
+            .is_none()
+        {
+            return Err(BalanceTransactionError::RecipientUninitialized);
+        };
+        let new_from_balance = add_user_balance(&**self, guild_id, from, -value).await?;
+        let new_to_balance = add_user_balance(&**self, guild_id, to, value).await?;
+        transaction.commit().await?;
+        Ok((new_from_balance, new_to_balance))
+    }
+}
+
+async fn create_user_balance<'e, E>(
+    executor: E,
+    guild_id: u64,
+    user_id: u64,
+    initial_value: i64,
+) -> Result<(), Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    #[expect(clippy::cast_possible_wrap)]
+    sqlx::query_file!(
+        "queries/balance/create_user_balance.sql",
+        guild_id as i64,
+        user_id as i64,
+        initial_value,
+    )
+    .execute(executor)
+    .await?;
+    Ok(())
+}
+
+async fn get_user_balance<'e, E>(
+    executor: E,
+    guild_id: u64,
+    user_id: u64,
+) -> Result<Option<i64>, Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    #[expect(clippy::cast_possible_wrap)]
+    let value = sqlx::query_file!(
+        "queries/balance/get_user_balance.sql",
+        guild_id as i64,
+        user_id as i64,
+    )
+    .fetch_optional(executor)
+    .await?
+    .map(|record| record.balance);
+    Ok(value)
+}
+
+async fn add_user_balance<'e, E>(
+    executor: E,
+    guild_id: u64,
+    user_id: u64,
+    value: i64,
+) -> Result<i64, Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    #[expect(clippy::cast_possible_wrap)]
+    let value = sqlx::query_file_scalar!(
+        "queries/balance/add_user_balance.sql",
+        guild_id as i64,
+        user_id as i64,
+        value,
+    )
+    .fetch_one(executor)
+    .await?;
+
+    Ok(value)
 }

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO user_balance (guild_id, user_id, balance) VALUES ($1, $2, $3);",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1467dd5f88c7002d143fa44e6c48a2caf661fedfa156d47534cfb1e1672c302a"
+}

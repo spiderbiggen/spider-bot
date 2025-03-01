@@ -1,6 +1,6 @@
 [package]
 name = "spider-bot"
-version = "0.2.9"
+version = "0.3.0"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2024"
 description = "Discord bot for the 'Turtle Force' discord"
@@ -9,8 +9,12 @@ description = "Discord bot for the 'Turtle Force' discord"
 members = ["db", "domain", "otaku", "proto", "tenor"]
 
 [workspace.lints.clippy]
-all = "deny"
-pedantic = "warn"
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_panics_doc = "allow"
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"
+single_match_else = "allow"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lints]
@@ -58,7 +62,16 @@ features = [
     "rustls_backend"
 ]
 
+[profile.dev.package.poise_macros]
+opt-level = 3
+
 [profile.dev.package.sqlx-macros]
+opt-level = 3
+
+[profile.dev.package.tokio-macros]
+opt-level = 3
+
+[profile.dev.package.tracing-attributes]
 opt-level = 3
 
 [profile.release]
