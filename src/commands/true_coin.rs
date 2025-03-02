@@ -1,6 +1,7 @@
 use crate::context::Context;
 use db::{UserBalanceConnection, UserBalanceTransaction};
 use poise::{CreateReply, send_reply};
+use rand::random_range;
 use serenity::all::{User, UserId};
 use std::fmt::Write;
 
@@ -10,7 +11,7 @@ const INITIAL_BALANCE: i64 = 100;
 #[poise::command(
     slash_command,
     guild_only,
-    subcommands("balance", "transfer", "leaderboard")
+    subcommands("balance", "transfer", "leaderboard", "bet")
 )]
 pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
     Ok(())
@@ -114,5 +115,68 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
     }
     ctx.reply(message).await?;
 
+    Ok(())
+}
+
+#[expect(clippy::unused_async)]
+#[poise::command(slash_command, subcommands("poker_chip"))]
+pub(crate) async fn bet(_: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
+    Ok(())
+}
+
+/// Bet some of you coins for a chance of double your bet.\
+/// A die roll determines the outcome.
+///
+/// 1-3 receive 1 coin\
+/// 4-6 receive double your bet.\
+/// This command is on a long cooldown
+#[poise::command(slash_command, member_cooldown = 10_000)]
+pub(crate) async fn poker_chip(
+    ctx: Context<'_, '_>,
+    #[description = "Amount of coins to send to another user"]
+    #[min = 2]
+    #[max = 10]
+    bet: u32,
+) -> Result<(), crate::commands::CommandError> {
+    ctx.defer().await?;
+    let db = &ctx.data().database;
+
+    let guild_id = ctx.guild_id().unwrap().get();
+    let user_id = ctx.author().id.get();
+    let Some(balance) = db.get_user_balance(guild_id, user_id).await? else {
+        let reply = CreateReply::default()
+            .reply(true)
+            .ephemeral(true)
+            .content("Use `/coins balance` to initialize your coins.");
+        send_reply(ctx, reply).await?;
+        return Ok(());
+    };
+    let bet = i64::from(bet);
+    if balance < bet {
+        let message = format!("You do not have enough coins. Current balance {balance}");
+        let reply = CreateReply::default()
+            .reply(true)
+            .ephemeral(true)
+            .content(message);
+        send_reply(ctx, reply).await?;
+        return Ok(());
+    }
+
+    let roll = random_range(1..=6);
+    let reward = match roll {
+        1..=3 => 1i64,
+        _ => bet * 2,
+    };
+
+    let change = reward - bet;
+    let new_balance = db.add_user_balance(guild_id, user_id, change).await?;
+    let mut message = format!("You rolled {roll}");
+    if reward == 1 {
+        write!(&mut message, "You receive 1 coin.").unwrap();
+    } else {
+        write!(&mut message, "You receive {reward} coins.").unwrap();
+    };
+    write!(&mut message, "New Balance: {new_balance}").unwrap();
+    ctx.reply(message).await?;
     Ok(())
 }

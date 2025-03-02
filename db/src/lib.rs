@@ -180,6 +180,7 @@ impl UserBalanceConnection for BotDatabase {
         let value = sqlx::query_file!("queries/balance/get_top_user_balances.sql", guild_id as i64)
             .fetch(&**self)
             .map_ok(|record| UserBalance {
+                #[expect(clippy::cast_sign_loss)]
                 user_id: record.user_id as u64,
                 balance: record.balance,
             })
