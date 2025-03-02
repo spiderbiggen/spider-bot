@@ -74,3 +74,8 @@ pub enum Subscriber {
         guild_id: NonZeroU64,
     },
 }
+
+pub struct UserBalance {
+    pub user_id: u64,
+    pub balance: i64,
+}

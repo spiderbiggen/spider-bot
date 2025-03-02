@@ -1,4 +1,4 @@
-use domain::Subscriber;
+use domain::{Subscriber, UserBalance};
 use futures_util::TryStreamExt;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::sqlx_macros::migrate;
@@ -68,6 +68,11 @@ pub trait UserBalanceConnection {
         guild_id: u64,
         user_id: u64,
     ) -> impl Future<Output = Result<Option<i64>, Self::Error>>;
+
+    fn get_top_user_balances(
+        &self,
+        guild_id: u64,
+    ) -> impl Future<Output = Result<Vec<UserBalance>, Self::Error>>;
 
     fn add_user_balance(
         &self,
@@ -168,6 +173,20 @@ impl UserBalanceConnection for BotDatabase {
         user_id: u64,
     ) -> Result<Option<i64>, Self::Error> {
         get_user_balance(&**self, guild_id, user_id).await
+    }
+
+    async fn get_top_user_balances(&self, guild_id: u64) -> Result<Vec<UserBalance>, Self::Error> {
+        #[expect(clippy::cast_possible_wrap)]
+        let value = sqlx::query_file!("queries/balance/get_top_user_balances.sql", guild_id as i64)
+            .fetch(&**self)
+            .map_ok(|record| UserBalance {
+                user_id: record.user_id as u64,
+                balance: record.balance,
+            })
+            .try_collect()
+            .await?;
+
+        Ok(value)
     }
 
     async fn add_user_balance(

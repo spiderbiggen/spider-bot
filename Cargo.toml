@@ -1,6 +1,6 @@
 [package]
 name = "spider-bot"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2024"
 description = "Discord bot for the 'Turtle Force' discord"
@@ -62,16 +62,7 @@ features = [
     "rustls_backend"
 ]
 
-[profile.dev.package.poise_macros]
-opt-level = 3
-
 [profile.dev.package.sqlx-macros]
-opt-level = 3
-
-[profile.dev.package.tokio-macros]
-opt-level = 3
-
-[profile.dev.package.tracing-attributes]
 opt-level = 3
 
 [profile.release]

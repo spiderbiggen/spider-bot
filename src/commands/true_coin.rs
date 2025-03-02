@@ -1,12 +1,17 @@
 use crate::context::Context;
 use db::{UserBalanceConnection, UserBalanceTransaction};
 use poise::{CreateReply, send_reply};
-use serenity::all::User;
+use serenity::all::{User, UserId};
+use std::fmt::Write;
 
 const INITIAL_BALANCE: i64 = 100;
 
 #[expect(clippy::unused_async)]
-#[poise::command(slash_command, subcommands("balance", "transfer"))]
+#[poise::command(
+    slash_command,
+    guild_only,
+    subcommands("balance", "transfer", "leaderboard")
+)]
 pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
     Ok(())
 }
@@ -35,7 +40,9 @@ pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::commands:
 pub(crate) async fn transfer(
     ctx: Context<'_, '_>,
     #[description = "Who to send coins to"] user: User,
-    #[description = "Amount of coins to send to another user"] amount: u32,
+    #[description = "Amount of coins to send to another user"]
+    #[max = 1000]
+    amount: u32,
 ) -> Result<(), crate::commands::CommandError> {
     let db = &ctx.data().database;
 
@@ -76,5 +83,36 @@ pub(crate) async fn transfer(
         .ephemeral(ephemeral)
         .content(message);
     send_reply(ctx, reply).await?;
+    Ok(())
+}
+
+#[poise::command(slash_command)]
+pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
+    ctx.defer().await?;
+    let db = &ctx.data().database;
+
+    let guild_id = ctx.guild_id().unwrap().get();
+    let users = db.get_top_user_balances(guild_id).await?;
+    let mut message = String::from("Current True Coin balances:\n");
+    for user_balance in users {
+        let user_id = UserId::from(user_balance.user_id);
+        if let Some(user) = ctx.cache().user(user_id) {
+            writeln!(
+                &mut message,
+                "\t{}: {}",
+                user.display_name(),
+                user_balance.balance
+            )
+            .unwrap();
+        } else {
+            let username = match ctx.http().get_user(user_id).await.ok() {
+                Some(user) => user.display_name().to_string(),
+                None => user_id.to_string(),
+            };
+            writeln!(&mut message, "\t{}: {}", username, user_balance.balance).unwrap();
+        };
+    }
+    ctx.reply(message).await?;
+
     Ok(())
 }
