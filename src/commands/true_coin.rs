@@ -124,13 +124,13 @@ pub(crate) async fn bet(_: Context<'_, '_>) -> Result<(), crate::commands::Comma
     Ok(())
 }
 
-/// Bet some of you coins for a chance of double your bet.\
+/// Bet some of you coins for a chance of double your bet.
 /// A die roll determines the outcome.
 ///
 /// 1-3 receive 1 coin\
 /// 4-6 receive double your bet.\
-/// This command is on a long cooldown
-#[poise::command(slash_command, member_cooldown = 10_000)]
+/// This command is on a long cooldown (20 Hours)
+#[poise::command(slash_command, member_cooldown = 72_000)]
 pub(crate) async fn poker_chip(
     ctx: Context<'_, '_>,
     #[description = "Amount of coins to send to another user"]
@@ -170,13 +170,16 @@ pub(crate) async fn poker_chip(
 
     let change = reward - bet;
     let new_balance = db.add_user_balance(guild_id, user_id, change).await?;
-    let mut message = format!("You rolled {roll}");
-    if reward == 1 {
-        write!(&mut message, "You receive 1 coin.").unwrap();
+
+    let gain_msg = if change.is_positive() {
+        "receive"
     } else {
-        write!(&mut message, "You receive {reward} coins.").unwrap();
+        "lose"
     };
-    write!(&mut message, "New Balance: {new_balance}").unwrap();
+    let message = format!(
+        "You staked {bet} and rolled a {roll}. You {gain_msg} {change} coins. New Balance: {new_balance}"
+    );
+
     ctx.reply(message).await?;
     Ok(())
 }
