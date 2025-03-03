@@ -129,13 +129,11 @@ pub(crate) async fn bet(_: Context<'_, '_>) -> Result<(), crate::commands::Comma
 ///
 /// 1-3 receive 1 coin\
 /// 4-6 receive double your bet.\
-/// This command is on a long cooldown (20 Hours)
-#[poise::command(slash_command, member_cooldown = 72_000)]
+#[poise::command(slash_command)]
 pub(crate) async fn poker_chip(
     ctx: Context<'_, '_>,
-    #[description = "Amount of coins to send to another user"]
+    #[description = "Amount of coins to stake on this bet"]
     #[min = 2]
-    #[max = 10]
     bet: u32,
 ) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
@@ -177,7 +175,8 @@ pub(crate) async fn poker_chip(
         "lose"
     };
     let message = format!(
-        "You staked {bet} and rolled a {roll}. You {gain_msg} {change} coins. New Balance: {new_balance}"
+        "You staked {bet} and rolled a {roll}. You {gain_msg} {} coins. New Balance: {new_balance}",
+        change.abs()
     );
 
     ctx.reply(message).await?;
