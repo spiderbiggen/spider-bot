@@ -1,9 +1,13 @@
 use crate::context::Context;
 use db::{UserBalanceConnection, UserBalanceTransaction};
+use futures::StreamExt;
 use poise::{CreateReply, send_reply};
 use rand::random_range;
-use serenity::all::{User, UserId};
+use serenity::all::User;
+use std::collections::BTreeSet;
 use std::fmt::Write;
+use std::sync::atomic;
+use std::sync::atomic::Ordering;
 
 const INITIAL_BALANCE: i64 = 100;
 
@@ -25,11 +29,11 @@ pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::commands:
     let guild_id = ctx.guild_id().unwrap().get();
     let user_id = ctx.author().id.get();
     let message = match db.get_user_balance(guild_id, user_id).await? {
-        Some(balance) => format!("You currently have {balance} coins."),
+        Some(balance) => format!("You currently have {balance} 🪙"),
         None => {
             db.create_user_balance(guild_id, user_id, INITIAL_BALANCE)
                 .await?;
-            format!("Welcome to True Coin. You currently have {INITIAL_BALANCE} coins.")
+            format!("Welcome to True Coin. You currently have {INITIAL_BALANCE} 🪙")
         }
     };
     ctx.reply(message).await?;
@@ -57,10 +61,11 @@ pub(crate) async fn transfer(
     let from_name = &from_user.display_name();
     let (message, ephemeral) = match result {
         Ok((from_balance, to_balance)) => {
+            let width = from_name.len().max(to_name.len());
             let message = format!(
-                "Successfully transferred {amount} coins to {to_name}. New Balance:\n\
-                {from_name}: {from_balance}\n\
-                {to_name}: {to_balance}",
+                "```\nSuccessfully transferred {amount} 🪙 to {to_name}. New Balance:\n\
+                {from_name:>width$}: {from_balance:>4} 🪙\n\
+                {to_name:>width$}: {to_balance:>4} 🪙\n```",
             );
             (message, false)
         }
@@ -74,7 +79,8 @@ pub(crate) async fn transfer(
             (message, true)
         }
         Err(db::BalanceTransactionError::InsufficientBalance(current_amount)) => {
-            let message = format!("You do not have enough coins. Current balance {current_amount}");
+            let message =
+                format!("You do not have enough coins. Current balance {current_amount} 🪙");
             (message, true)
         }
         Err(err) => return Err(err.into()),
@@ -87,32 +93,45 @@ pub(crate) async fn transfer(
     Ok(())
 }
 
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+struct MemberBalance {
+    balance: i64,
+    username: String,
+}
+
 #[poise::command(slash_command)]
 pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
 
-    let guild_id = ctx.guild_id().unwrap().get();
+    let guild = ctx.guild_id().unwrap();
+    let guild_id = guild.get();
     let users = db.get_top_user_balances(guild_id).await?;
-    let mut message = String::from("Current True Coin balances:\n");
-    for user_balance in users {
-        let user_id = UserId::from(user_balance.user_id);
-        if let Some(user) = ctx.cache().user(user_id) {
-            writeln!(
-                &mut message,
-                "\t{}: {}",
-                user.display_name(),
-                user_balance.balance
-            )
-            .unwrap();
-        } else {
-            let username = match ctx.http().get_user(user_id).await.ok() {
-                Some(user) => user.display_name().to_string(),
-                None => user_id.to_string(),
+    let mut message = String::from("```\nCurrent True Coin balances:\n");
+    let mut max_length = atomic::AtomicUsize::new(0);
+    let member_balances: BTreeSet<_> = futures::stream::iter(users)
+        .then(async |user_balance| {
+            let username = match guild.member(&ctx, user_balance.user_id).await {
+                Ok(user) => user.display_name().to_string(),
+                Err(_) => user_balance.user_id.to_string(),
             };
-            writeln!(&mut message, "\t{}: {}", username, user_balance.balance).unwrap();
-        };
-    }
+            max_length.fetch_max(username.len(), Ordering::Relaxed);
+            MemberBalance {
+                username,
+                balance: user_balance.balance,
+            }
+        })
+        .collect()
+        .await;
+
+    let width = *max_length.get_mut();
+    member_balances
+        .into_iter()
+        .rev()
+        .for_each(|MemberBalance { username, balance }| {
+            writeln!(&mut message, "{username:>width$}: {balance:>4} 🪙",).unwrap();
+        });
+    writeln!(&mut message, "```").unwrap();
     ctx.reply(message).await?;
 
     Ok(())
@@ -133,7 +152,7 @@ pub(crate) async fn bet(_: Context<'_, '_>) -> Result<(), crate::commands::Comma
 pub(crate) async fn poker_chip(
     ctx: Context<'_, '_>,
     #[description = "Amount of coins to stake on this bet"]
-    #[min = 2]
+    #[min = 1]
     bet: u32,
 ) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
@@ -151,7 +170,7 @@ pub(crate) async fn poker_chip(
     };
     let bet = i64::from(bet);
     if balance < bet {
-        let message = format!("You do not have enough coins. Current balance {balance}");
+        let message = format!("You do not have enough coins.\nCurrent balance {balance} 🪙");
         let reply = CreateReply::default()
             .reply(true)
             .ephemeral(true)
@@ -161,22 +180,15 @@ pub(crate) async fn poker_chip(
     }
 
     let roll = random_range(1..=6);
-    let reward = match roll {
-        1..=3 => 1i64,
-        _ => bet * 2,
+    let (reward, reward_msg) = match roll {
+        1..=3 => (-bet, "receive"),
+        _ => (bet, "lose"),
     };
 
-    let change = reward - bet;
-    let new_balance = db.add_user_balance(guild_id, user_id, change).await?;
-
-    let gain_msg = if change.is_positive() {
-        "receive"
-    } else {
-        "lose"
-    };
+    let new_balance = db.add_user_balance(guild_id, user_id, reward).await?;
     let message = format!(
-        "You staked {bet} and rolled a {roll}. You {gain_msg} {} coins. New Balance: {new_balance}",
-        change.abs()
+        "{roll} 🎲. You {reward_msg} {} 🪙. New Balance: {new_balance} 🪙",
+        reward.abs()
     );
 
     ctx.reply(message).await?;

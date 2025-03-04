@@ -64,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![
+                commands::version(),
                 commands::gifs::hurry(),
                 commands::gifs::morbin(),
                 commands::gifs::play(),
