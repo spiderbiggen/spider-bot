@@ -2,7 +2,7 @@ use crate::context::Context;
 use db::{UserBalanceConnection, UserBalanceTransaction};
 use futures::StreamExt;
 use poise::{CreateReply, send_reply};
-use rand::random_range;
+use rand::Rng;
 use serenity::all::User;
 use std::collections::BTreeSet;
 use std::fmt::Write;
@@ -179,7 +179,10 @@ pub(crate) async fn poker_chip(
         return Ok(());
     }
 
-    let roll = random_range(1..=6);
+    let roll = {
+        let mut rng = ctx.data().rng.lock().expect("this should not deadlock");
+        rng.random_range(1..=6)
+    };
     let (reward, reward_msg) = match roll {
         1..=3 => (-bet, "lose"),
         _ => (bet, "receive"),
