@@ -1,6 +1,6 @@
 [package]
 name = "spider-bot"
-version = "0.3.4-alpha02"
+version = "0.3.4-alpha03"
 authors = ["Stefan Breetveld <spiderbiggen@gmail.com>"]
 edition = "2024"
 description = "Discord bot for the 'Turtle Force' discord"
@@ -23,7 +23,7 @@ workspace = true
 [workspace.dependencies]
 chrono = "0.4.38"
 thiserror = "2.0.0"
-tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "signal", "time", "sync"] }
 tracing = "0.1.37"
 url = "2.5.2"
 

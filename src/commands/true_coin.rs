@@ -180,7 +180,7 @@ pub(crate) async fn poker_chip(
     }
 
     let roll = {
-        let mut rng = ctx.data().rng.lock().expect("this should not deadlock");
+        let mut rng = ctx.data().rng.lock().await;
         rng.random_range(1..=6)
     };
     let (reward, reward_msg) = match roll {
