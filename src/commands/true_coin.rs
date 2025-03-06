@@ -181,8 +181,8 @@ pub(crate) async fn poker_chip(
 
     let roll = random_range(1..=6);
     let (reward, reward_msg) = match roll {
-        1..=3 => (-bet, "receive"),
-        _ => (bet, "lose"),
+        1..=3 => (-bet, "lose"),
+        _ => (bet, "receive"),
     };
 
     let new_balance = db.add_user_balance(guild_id, user_id, reward).await?;
