@@ -7,13 +7,9 @@ use consts::BASE_GIF_CONFIG;
 use db::{BotDatabase, DatabaseConnection};
 use dotenv::dotenv;
 use poise::CreateReply;
-use rand::SeedableRng;
-use rand::prelude::SmallRng;
 use serenity::all::GatewayIntents;
 use serenity::client::Client;
 use std::env;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing::error;
 use tracing_subscriber::prelude::*;
 use url::Url;
@@ -29,7 +25,6 @@ struct SpiderBot<'tenor_config> {
     gif_cache: cache::Memory<[Url]>,
     tenor: tenor::Client<'tenor_config>,
     database: BotDatabase,
-    rng: Arc<Mutex<SmallRng>>,
 }
 
 #[tokio::main]
@@ -58,7 +53,6 @@ async fn main() -> anyhow::Result<()> {
         gif_cache: cache::Memory::new(),
         tenor: tenor::Client::with_config(tenor_token, Some(BASE_GIF_CONFIG)),
         database: database.clone(),
-        rng: Arc::new(Mutex::new(SmallRng::from_os_rng())),
     };
 
     start_gif_updater(bot.tenor.clone(), bot.gif_cache.clone())?;
