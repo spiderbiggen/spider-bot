@@ -48,6 +48,15 @@ pub(crate) async fn transfer(
     #[max = 1000]
     amount: u32,
 ) -> Result<(), crate::commands::CommandError> {
+    if user.bot {
+        let reply = CreateReply::default()
+            .reply(true)
+            .ephemeral(true)
+            .content("Bot users cannot handle the true power of coins.");
+        send_reply(ctx, reply).await?;
+        return Ok(());
+    }
+
     let db = &ctx.data().database;
 
     let from_user = ctx.author();
@@ -56,6 +65,7 @@ pub(crate) async fn transfer(
     let result = db
         .transfer_user_balance(guild_id, from_user_id, user.id.get(), i64::from(amount))
         .await;
+
     let to_name = &user.display_name();
     let from_name = &from_user.display_name();
     let (message, ephemeral) = match result {
@@ -109,16 +119,18 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
     let mut message = String::from("```\nCurrent True Coin balances:\n");
     let mut max_length = atomic::AtomicUsize::new(0);
     let member_balances: BTreeSet<_> = futures::stream::iter(users)
-        .then(async |user_balance| {
-            let username = match guild.member(&ctx, user_balance.user_id).await {
-                Ok(user) => user.display_name().to_string(),
-                Err(_) => user_balance.user_id.to_string(),
-            };
+        .filter_map(async |user_balance| {
+            let member = guild.member(&ctx, user_balance.user_id).await.ok()?;
+            if member.user.bot {
+                return None;
+            }
+
+            let username = member.display_name().to_string();
             max_length.fetch_max(username.len(), Ordering::Relaxed);
-            MemberBalance {
+            Some(MemberBalance {
                 username,
                 balance: user_balance.balance,
-            }
+            })
         })
         .collect()
         .await;
@@ -128,7 +140,7 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
         .into_iter()
         .rev()
         .for_each(|MemberBalance { username, balance }| {
-            writeln!(&mut message, "{username:>width$}: {balance:>4} 🪙",).unwrap();
+            writeln!(&mut message, "{username:>width$}: {balance:>4} 🪙").unwrap();
         });
     writeln!(&mut message, "```").unwrap();
     ctx.reply(message).await?;
