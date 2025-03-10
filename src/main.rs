@@ -19,6 +19,7 @@ mod cache;
 mod commands;
 mod consts;
 mod context;
+mod util;
 
 #[derive(Debug, Clone)]
 struct SpiderBot<'tenor_config> {

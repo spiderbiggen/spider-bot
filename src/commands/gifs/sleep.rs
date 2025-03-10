@@ -1,72 +1,19 @@
-use crate::cache;
 use crate::commands::gifs::GifError;
 use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
 use crate::context::{GifCacheExt, GifContextExt};
-use chrono::{Datelike, TimeDelta, Utc};
+use crate::util::{DateRange, DayOfMonth};
+use crate::{cache, day_of_month};
+use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use rand::Rng;
 use rand::prelude::*;
 use std::collections::HashSet;
-use std::num::NonZeroU8;
 use std::sync::Arc;
 use tenor::Config;
 use tracing::{debug, error, info, instrument, warn};
 use url::Url;
 
 const SLEEP_GIF_CONFIG: Config = super::RANDOM_CONFIG;
-
-macro_rules! const_nonzero_u8 {
-    ($value:expr) => {{
-        const RET: NonZeroU8 = {
-            let _const_guard: () = [()][($value == 0) as usize];
-            // SAFETY: this value is checked at compile time, so it's safe to return it.
-            unsafe { NonZeroU8::new_unchecked($value) }
-        };
-        RET
-    }};
-}
-
-macro_rules! day_of_month {
-    ($day:expr, $month:expr) => {
-        DayOfMonth(const_nonzero_u8!($day), $month)
-    };
-}
-
-static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
-    seasons: &[Season {
-        range: DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        },
-        resolver: GifResolver {
-            name: "halloween sleep",
-            ratio_override: Some(RatioQuery {
-                query: "https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif",
-                numerator: 1,
-                denominator: 150,
-            }),
-            queries: &["halloween_sleep", "spooky_sleep", "horror_sleep"],
-        },
-    }],
-    default: GifResolver {
-        name: "sleep",
-        ratio_override: Some(RatioQuery {
-            query: "https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif",
-            numerator: 1,
-            denominator: 150,
-        }),
-        queries: &[
-            "sleep",
-            "dog_sleep",
-            "cat_sleep",
-            "rabbit_sleep",
-            "rat_sleep",
-            "duck_sleep",
-            "sheep_sleep",
-            "animal_sleep",
-        ],
-    },
-};
 
 #[instrument(skip_all, err)]
 pub async fn get_gif(context: &impl GifCacheExt) -> Result<String, GifError> {
@@ -90,61 +37,6 @@ pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
     let resolver = SLEEP_GIF_COLLECTION.default;
     if let Err(error) = update_sleep_resolver_cache(context, resolver).await {
         error!("Error caching gifs for {}: {error}", resolver.name);
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-struct DayOfMonth(NonZeroU8, Month);
-
-impl DayOfMonth {
-    fn to_naive_date(self, year: i32) -> Option<NaiveDate> {
-        NaiveDate::from_ymd_opt(year, self.1.number_from_month(), u32::from(self.0.get()))
-    }
-
-    fn adjust_for_leap_year(mut self, leap_year: bool) -> DayOfMonth {
-        if !leap_year && self.1 == Month::February && self.0.get() >= 29 {
-            self.0 = const_nonzero_u8!(28);
-        }
-        self
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-struct DateRange {
-    start: DayOfMonth,
-    end: DayOfMonth,
-}
-
-impl DateRange {
-    fn expand_start(mut self, date: NaiveDate) -> DateRange {
-        let start = self.start.adjust_for_leap_year(date.leap_year());
-        let Some(mut start_date) = start.to_naive_date(date.year()) else {
-            warn!("Failed to transform start date: {:?}", self.start);
-            return self;
-        };
-        start_date -= TimeDelta::days(1);
-
-        let day = u8::try_from(start_date.day()).expect("Chrono days are 1-31");
-        let month = u8::try_from(start_date.month()).expect("Chrono month are 1-12");
-        self.start = DayOfMonth(
-            NonZeroU8::new(day).expect("Chrono days are 1-31"),
-            Month::try_from(month).expect("Chrono month are 1-12"),
-        );
-        self
-    }
-
-    fn contains(self, other: NaiveDate) -> bool {
-        let day = other.day();
-        let month = other.month();
-        let start_month = self.start.1.number_from_month();
-        let end_month = self.end.1.number_from_month();
-        (month >= start_month && month <= end_month)
-            && !(month == start_month && day < u32::from(self.start.0.get()))
-            && !(month == end_month && day > u32::from(self.end.0.get()))
-    }
-
-    fn should_cache(self, other: NaiveDate) -> bool {
-        self.expand_start(other).contains(other)
     }
 }
 
@@ -234,6 +126,40 @@ async fn update_sleep_resolver_cache(
     Ok(())
 }
 
+const FROGGERS_RATIO_QUERY: RatioQuery = RatioQuery {
+    query: "https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif",
+    numerator: 1,
+    denominator: 150,
+};
+
+static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
+    seasons: &[Season {
+        range: DateRange::new(
+            day_of_month!(15, Month::October),
+            day_of_month!(31, Month::October),
+        ),
+        resolver: GifResolver {
+            name: "halloween sleep",
+            ratio_override: Some(FROGGERS_RATIO_QUERY),
+            queries: &["halloween_sleep", "spooky_sleep", "horror_sleep"],
+        },
+    }],
+    default: GifResolver {
+        name: "sleep",
+        ratio_override: Some(FROGGERS_RATIO_QUERY),
+        queries: &[
+            "sleep",
+            "dog_sleep",
+            "cat_sleep",
+            "rabbit_sleep",
+            "rat_sleep",
+            "duck_sleep",
+            "sheep_sleep",
+            "animal_sleep",
+        ],
+    },
+};
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -254,122 +180,24 @@ mod test {
 
     #[test]
     fn all_seasons_have_valid_dates() {
-        let years = [(2023, false), (2024, true)];
+        let years = [(2023, false), (2024, true), (2025, false)];
         for (year, leap_year) in years {
             for Season { range, .. } in SLEEP_GIF_COLLECTION.seasons {
                 let start = range.start.adjust_for_leap_year(leap_year);
                 assert!(
                     start.to_naive_date(year).is_some(),
                     "invalid start date: {year}-{:02}-{:02}",
-                    start.1.number_from_month(),
-                    start.0.get()
+                    start.month_num(),
+                    start.day()
                 );
                 let end = range.start.adjust_for_leap_year(leap_year);
                 assert!(
                     end.to_naive_date(year).is_some(),
                     "invalid start date: {year}-{:02}-{:02}",
-                    start.1.number_from_month(),
-                    start.0.get()
+                    start.month_num(),
+                    start.day()
                 );
             }
         }
-    }
-
-    #[test]
-    fn invalid_date_for_non_leap_year() {
-        let date = day_of_month!(29, Month::February);
-        assert!(date.to_naive_date(2023).is_none());
-    }
-
-    #[test]
-    fn adjusted_tovalid_date_for_non_leap_year() {
-        let date = day_of_month!(29, Month::February).adjust_for_leap_year(false);
-        assert!(date.to_naive_date(2023).is_some());
-    }
-
-    #[test]
-    fn valid_date_for_leap_year() {
-        let date = day_of_month!(29, Month::February);
-        assert!(date.to_naive_date(2024).is_some());
-    }
-
-    #[test]
-    fn should_not_cache_more_than_one_day_before_start_day() {
-        let range = DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        };
-        let date = NaiveDate::from_ymd_opt(2024, 10, 13).unwrap();
-        assert!(!range.should_cache(date));
-    }
-
-    #[test]
-    fn should_cache_one_day_before_start() {
-        let range = DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        };
-        let date = NaiveDate::from_ymd_opt(2024, 10, 14).unwrap();
-        assert!(range.should_cache(date));
-    }
-
-    #[test]
-    fn should_cache_ending_day() {
-        let range = DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        };
-        let date = NaiveDate::from_ymd_opt(2024, 10, 31).unwrap();
-        assert!(range.should_cache(date));
-    }
-
-    #[test]
-    fn should_not_cache_after_ending_day() {
-        let range = DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        };
-        let date = NaiveDate::from_ymd_opt(2024, 11, 1).unwrap();
-        assert!(!range.should_cache(date));
-    }
-
-    #[test]
-    fn date_range_does_not_contain_naive_date_before_start_day() {
-        let range = DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        };
-        let date = NaiveDate::from_ymd_opt(2024, 10, 14).unwrap();
-        assert!(!range.contains(date));
-    }
-
-    #[test]
-    fn date_range_does_contain_naive_date_on_start_day() {
-        let range = DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        };
-        let date = NaiveDate::from_ymd_opt(2024, 10, 15).unwrap();
-        assert!(range.contains(date));
-    }
-
-    #[test]
-    fn date_range_does_contain_naive_date_on_ending_day() {
-        let range = DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        };
-        let date = NaiveDate::from_ymd_opt(2024, 10, 31).unwrap();
-        assert!(range.contains(date));
-    }
-
-    #[test]
-    fn date_range_does_not_contain_naive_date_after_ending_day() {
-        let range = DateRange {
-            start: day_of_month!(15, Month::October),
-            end: day_of_month!(31, Month::October),
-        };
-        let date = NaiveDate::from_ymd_opt(2024, 11, 1).unwrap();
-        assert!(!range.contains(date));
     }
 }
