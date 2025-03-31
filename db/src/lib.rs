@@ -69,6 +69,13 @@ pub trait UserBalanceConnection {
         user_id: u64,
     ) -> impl Future<Output = Result<Option<i64>, Self::Error>>;
 
+    fn set_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        amount: i64,
+    ) -> impl Future<Output = Result<(), Self::Error>>;
+
     fn get_top_user_balances(
         &self,
         guild_id: u64,
@@ -175,6 +182,15 @@ impl UserBalanceConnection for BotDatabase {
         get_user_balance(&**self, guild_id, user_id).await
     }
 
+    async fn set_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        amount: i64,
+    ) -> Result<(), Self::Error> {
+        set_user_balance(&**self, guild_id, user_id, amount).await
+    }
+
     async fn get_top_user_balances(&self, guild_id: u64) -> Result<Vec<UserBalance>, Self::Error> {
         #[expect(clippy::cast_possible_wrap)]
         let value = sqlx::query_file!("queries/balance/get_top_user_balances.sql", guild_id as i64)
@@ -269,6 +285,27 @@ where
     .await?
     .map(|record| record.balance);
     Ok(value)
+}
+
+async fn set_user_balance<'e, E>(
+    executor: E,
+    guild_id: u64,
+    user_id: u64,
+    amount: i64,
+) -> Result<(), Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    #[expect(clippy::cast_possible_wrap)]
+    sqlx::query_file!(
+        "queries/balance/set_user_balance.sql",
+        guild_id as i64,
+        user_id as i64,
+        amount,
+    )
+    .execute(executor)
+    .await?;
+    Ok(())
 }
 
 async fn add_user_balance<'e, E>(

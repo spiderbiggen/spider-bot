@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE user_balance SET balance = $3 WHERE guild_id = $1 AND user_id = $2;",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e62f35122200478c1556064da1a6b1fcccc0534744b176dd3d74f60f8ee7488a"
+}

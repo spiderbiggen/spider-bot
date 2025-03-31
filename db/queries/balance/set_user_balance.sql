@@ -1,0 +1,1 @@
+UPDATE user_balance SET balance = $3 WHERE guild_id = $1 AND user_id = $2;
