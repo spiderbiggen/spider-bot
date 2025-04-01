@@ -14,7 +14,7 @@ const INITIAL_BALANCE: i64 = 500;
 #[poise::command(
     slash_command,
     guild_only,
-    subcommands("balance", "transfer", "leaderboard", "set_amount")
+    subcommands("balance", "transfer", "leaderboard", "set", "update")
 )]
 pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
     Ok(())
@@ -168,7 +168,7 @@ async fn author_is_guild_admin(
 }
 
 #[poise::command(slash_command, check = "author_is_guild_admin")]
-pub(crate) async fn set_amount(
+pub(crate) async fn set(
     ctx: Context<'_, '_>,
     #[description = "Who to set coins for"] member: serenity::all::Member,
     #[description = "Amount of coins the user should have"]
@@ -186,6 +186,33 @@ pub(crate) async fn set_amount(
         None => db.create_user_balance(guild_id, user_id, amount).await?,
     };
     let message = format!("{} now has {amount} 🪙", member.display_name());
+    ctx.reply(message).await?;
+    Ok(())
+}
+
+#[poise::command(slash_command, check = "author_is_guild_admin")]
+pub(crate) async fn update(
+    ctx: Context<'_, '_>,
+    #[description = "Who to update coins for"] member: serenity::all::Member,
+    #[description = "Amount of coins the user should gain/lose"]
+    #[min = -500]
+    #[max = 500]
+    amount: i64,
+) -> Result<(), crate::commands::CommandError> {
+    ctx.defer().await?;
+    let db = &ctx.data().database;
+    let guild_id = ctx.guild_id().unwrap().get();
+    let user_id = member.user.id.get();
+
+    let balance = match db.get_user_balance(guild_id, user_id).await? {
+        Some(_) => db.add_user_balance(guild_id, user_id, amount).await?,
+        None => {
+            let balance = INITIAL_BALANCE + amount;
+            db.create_user_balance(guild_id, user_id, balance).await?;
+            balance
+        }
+    };
+    let message = format!("{} now has {balance} 🪙", member.display_name());
     ctx.reply(message).await?;
     Ok(())
 }
