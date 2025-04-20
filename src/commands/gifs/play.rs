@@ -123,14 +123,14 @@ pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
                 cache_gifs(context, *query, gifs, LONG_CACHE_LIFETIME).await;
             }
             Err(error) => error!("Error caching gifs for {query}: {error}"),
-        };
+        }
     }
     match tenor.search(PLAY_FALLBACK, Some(FALLBACK_CONFIG)).await {
         Ok(gifs) => {
             cache_gifs(context, PLAY_FALLBACK, gifs, LONG_CACHE_LIFETIME).await;
         }
         Err(error) => error!("Error caching gifs for {PLAY_FALLBACK}: {error}"),
-    };
+    }
 }
 
 fn transform_query(input: &str) -> Result<Cow<'static, str>, GifError> {

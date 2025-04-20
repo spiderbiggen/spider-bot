@@ -184,7 +184,7 @@ pub(crate) async fn set(
     match db.get_user_balance(guild_id, user_id).await? {
         Some(_) => db.set_user_balance(guild_id, user_id, amount).await?,
         None => db.create_user_balance(guild_id, user_id, amount).await?,
-    };
+    }
     let message = format!("{} now has {amount} 🪙", member.display_name());
     ctx.reply(message).await?;
     Ok(())

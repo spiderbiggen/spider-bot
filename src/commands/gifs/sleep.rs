@@ -171,7 +171,7 @@ mod test {
         for _ in 0..iterations {
             if SLEEP_GIF_COLLECTION.default.get_override().is_some() {
                 occurences += 1;
-            };
+            }
         }
         let average_rolls = f64::from(iterations) / f64::from(occurences);
         eprintln!("Froggers average rolls[iterations={iterations}]: {average_rolls:.2}");

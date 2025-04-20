@@ -233,12 +233,9 @@ impl UserBalanceTransaction for BotDatabase {
         if from_balance < value {
             return Err(BalanceTransactionError::InsufficientBalance(from_balance));
         }
-        if get_user_balance(&mut *transaction, guild_id, to)
+        get_user_balance(&mut *transaction, guild_id, to)
             .await?
-            .is_none()
-        {
-            return Err(BalanceTransactionError::RecipientUninitialized);
-        };
+            .ok_or(BalanceTransactionError::RecipientUninitialized)?;
         let new_from_balance = add_user_balance(&**self, guild_id, from, -value).await?;
         let new_to_balance = add_user_balance(&**self, guild_id, to, value).await?;
         transaction.commit().await?;

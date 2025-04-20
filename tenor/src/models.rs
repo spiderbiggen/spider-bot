@@ -178,7 +178,7 @@ pub enum MediaFilter {
     /// - Resolution and size: Reduced size of the `WebP` sticker format; maximum size of 500 KB
     /// - Dimensions: Up to 220x220 pixels, height scaled to preserve the aspect ratio.
     /// - Usage notes: Use this size for sticker previews for high-bandwidth users
-    ///                and shares for low-bandwidth users.
+    ///   and shares for low-bandwidth users.
     ///
     /// This format is supported for stickers.
     #[strum(serialize = "tinywebp_transparent")]
@@ -203,7 +203,7 @@ pub enum MediaFilter {
     /// - Resolution and size: Reduced size of the GIF sticker format; maximum size of 500 KB
     /// - Dimensions: Up to 220x220 pixels, with the height scaled to preserve the aspect ratio.
     /// - Usage notes: Use this size for sticker previews for high-bandwidth users
-    ///                and shares for low-bandwidth users.
+    ///   and shares for low-bandwidth users.
     ///
     /// This format is supported for stickers.
     #[strum(serialize = "tinygif_transparent")]
