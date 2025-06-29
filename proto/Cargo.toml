@@ -11,8 +11,8 @@ domain = { path = "../domain" }
 chrono = { workspace = true }
 tonic = { version = "0.13.0", default-features = false, features = ["codegen"] }
 thiserror = { workspace = true }
-prost = "0.13.2"
-prost-types = "0.13.2"
+prost = "0.14.0"
+prost-types = "0.14.0"
 
 [build-dependencies]
 tonic-build = "0.13.0"
