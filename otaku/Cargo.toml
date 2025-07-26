@@ -15,7 +15,7 @@ db = { path = "../db" }
 
 chrono = { workspace = true }
 futures-util = "0.3.28"
-prost-types = "0.13.2"
+prost-types = "0.14.0"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tonic = { version = "0.13.0", features = ["gzip"] }
