@@ -1,6 +1,6 @@
 [package]
 name = "proto"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,10 +9,11 @@ edition = "2024"
 domain = { path = "../domain" }
 
 chrono = { workspace = true }
-tonic = { version = "0.13.0", default-features = false, features = ["codegen"] }
+tonic = { version = "0.14.0", default-features = false, features = ["codegen"] }
+tonic-prost = "0.14.0"
 thiserror = { workspace = true }
-prost = "0.13.2"
-prost-types = "0.13.2"
+prost = "0.14.0"
+prost-types = "0.14.0"
 
 [build-dependencies]
-tonic-build = "0.13.0"
+tonic-prost-build = "0.14.0"
