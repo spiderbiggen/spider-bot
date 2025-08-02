@@ -212,7 +212,10 @@ pub(crate) async fn update(
             balance
         }
     };
-    let message = format!("{} now has {balance} 🪙", member.display_name());
+    let message = format!(
+        "{} now has {balance} ({amount:+}) 🪙",
+        member.display_name()
+    );
     ctx.reply(message).await?;
     Ok(())
 }

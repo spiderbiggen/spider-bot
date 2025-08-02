@@ -2609,7 +2609,7 @@ dependencies = [
 
 [[package]]
 name = "spider-bot"
-version = "0.3.4-alpha08"
+version = "0.3.4-alpha09"
 dependencies = [
  "anyhow",
  "chrono",
