@@ -2,7 +2,7 @@ use crate::commands::gifs::GifError;
 use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
 use crate::context::{GifCacheExt, GifContextExt};
 use crate::util::{DateRange, DayOfMonth};
-use crate::{cache, day_of_month};
+use crate::{GifCache, cache, day_of_month};
 use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use rand::Rng;
@@ -68,10 +68,10 @@ struct Season<'a> {
 
 type CollectionData<'a> = &'a [&'a str];
 
-impl GifCollection<'_> {
+impl<'gifs> GifCollection<'gifs> {
     #[must_use]
     #[instrument(skip_all)]
-    fn current(&self, date: NaiveDate) -> GifResolver {
+    fn current(&self, date: NaiveDate) -> GifResolver<'gifs> {
         let season = self.seasons.iter().find(|s| s.range.contains(date));
         match season {
             None => self.default,
@@ -85,7 +85,7 @@ impl GifCollection<'_> {
 
 impl GifResolver<'_> {
     #[instrument(skip_all, err)]
-    async fn get_gif(&self, gif_cache: &cache::Memory<[Url]>) -> Result<String, GifError> {
+    async fn get_gif(&self, gif_cache: &GifCache) -> Result<String, GifError> {
         if let Some(query) = self.get_override() {
             debug!("Found gif override");
             return Ok(query.to_string());

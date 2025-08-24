@@ -1,5 +1,6 @@
-use std::borrow::Cow;
+use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,22 +9,22 @@ use tokio::sync::RwLock;
 use crate::consts;
 
 #[derive(Debug, Clone)]
-pub struct Key<T: ?Sized>(Instant, Arc<T>);
+pub struct Value<T: ?Sized>(Instant, Arc<T>);
 
 #[derive(Debug)]
-pub struct Memory<T: ?Sized> {
-    map: Arc<RwLock<HashMap<Cow<'static, str>, Key<T>>>>,
+pub struct Memory<K, T: ?Sized> {
+    map: Arc<RwLock<HashMap<K, Value<T>>>>,
 }
 
-impl<T: ?Sized> Clone for Memory<T> {
+impl<K, T: ?Sized> Clone for Memory<K, T> {
     fn clone(&self) -> Self {
         Self {
-            map: self.map.clone(),
+            map: Arc::clone(&self.map),
         }
     }
 }
 
-impl<T: ?Sized> Default for Memory<T> {
+impl<K, T: ?Sized> Default for Memory<K, T> {
     fn default() -> Self {
         Self {
             map: Arc::new(RwLock::new(HashMap::new())),
@@ -31,47 +32,54 @@ impl<T: ?Sized> Default for Memory<T> {
     }
 }
 
-impl<T: ?Sized> Memory<T> {
+impl<K, T> Memory<K, T>
+where
+    T: ?Sized,
+    K: Eq + Hash,
+{
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub async fn get(&self, key: &str) -> Option<Arc<T>> {
+    pub async fn get<R>(&self, key: &R) -> Option<Arc<T>>
+    where
+        R: Eq + Hash + ?Sized,
+        K: Borrow<R>,
+    {
         let map = self.map.read().await;
         map.get(key)
-            .filter(|&&Key(instant, _)| instant >= Instant::now())
-            .map(|Key(_, value)| value.clone())
+            .filter(|&&Value(instant, _)| instant >= Instant::now())
+            .map(|Value(_, value)| Arc::clone(value))
     }
 
     #[expect(dead_code)]
-    pub async fn insert(&self, key: impl Into<Cow<'static, str>>, value: impl Into<Arc<T>>) {
+    pub async fn insert<O: Into<K>, V: Into<Arc<T>>>(&self, key: O, value: V) {
         self.insert_with_duration(key, value, consts::SHORT_CACHE_LIFETIME)
             .await;
     }
 
-    pub async fn insert_with_duration(
-        &self,
-        key: impl Into<Cow<'static, str>>,
-        value: impl Into<Arc<T>>,
-        duration: Duration,
-    ) {
+    pub async fn insert_with_duration<O, V>(&self, key: O, value: V, duration: Duration)
+    where
+        O: Into<K>,
+        V: Into<Arc<T>>,
+    {
         let expiration = Instant::now() + duration;
         self.insert_with_expiration(key, value, expiration).await;
     }
 
-    pub async fn insert_with_expiration(
-        &self,
-        key: impl Into<Cow<'static, str>>,
-        value: impl Into<Arc<T>>,
-        expiration: Instant,
-    ) {
+    pub async fn insert_with_expiration<O, V>(&self, key: O, value: V, expiration: Instant)
+    where
+        O: Into<K>,
+        V: Into<Arc<T>>,
+    {
         let mut map = self.map.write().await;
-        map.insert(key.into(), Key(expiration, value.into()));
+        map.insert(key.into(), Value(expiration, value.into()));
     }
 
     pub async fn trim(&self) {
         let now = Instant::now();
         let mut map = self.map.write().await;
-        map.retain(|_, &mut Key(expiration, _)| expiration >= now);
+        map.retain(|_, &mut Value(expiration, _)| expiration >= now);
+        map.shrink_to_fit();
     }
 }

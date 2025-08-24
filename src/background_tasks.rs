@@ -3,21 +3,23 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
+use serenity::Client as Serenity;
 use serenity::all::{CacheHttp, CreateMessage, Message, UserId};
 use serenity::builder::{Builder, CreateEmbed};
 use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::ChannelId;
+use tenor::Client as Tenor;
 use tokio::sync::mpsc::{Receiver, channel};
+use tokio::task::JoinSet;
 use tokio::time::{Instant, Interval, interval_at};
 use tracing::{error, info, instrument};
-use url::Url;
 
 use db::BotDatabase;
 use domain::{Download, DownloadCollection, Subscribed, Subscriber};
 
-use crate::cache;
+use crate::GifCache;
 use crate::commands::gifs;
 use crate::consts::SHORT_CACHE_LIFETIME;
 
@@ -27,16 +29,13 @@ fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
     let seconds = u64::try_from(now.timestamp())?;
     let sub_seconds = seconds % period.as_secs();
     let minute = DateTime::from_timestamp(i64::try_from(seconds - sub_seconds)?, 0)
-        .ok_or(anyhow!("failed to create new date time"))?;
+        .ok_or(anyhow!("failed to create a new date time"))?;
     let offset = (now - minute).to_std()?;
     let best_effort_start = start.checked_sub(offset).unwrap_or(start);
     Ok(interval_at(best_effort_start, period))
 }
 
-pub(crate) fn start_gif_updater(
-    tenor: tenor::Client<'static>,
-    gif_cache: cache::Memory<[Url]>,
-) -> anyhow::Result<()> {
+pub(crate) fn start_gif_updater(tenor: Tenor<'static>, gif_cache: GifCache) -> anyhow::Result<()> {
     let context = (tenor, gif_cache);
     let mut interval = interval_at_previous_period(Duration::from_secs(6 * 3600))?;
     tokio::spawn(async move {
@@ -53,7 +52,7 @@ pub(crate) fn start_gif_updater(
 /// ### Arguments
 ///
 /// - `gif_cache` - the cache of GIFs
-pub(crate) fn start_cache_trim(gif_cache: cache::Memory<[Url]>) {
+pub(crate) fn start_cache_trim(gif_cache: GifCache) {
     let mut interval = tokio::time::interval(SHORT_CACHE_LIFETIME);
     tokio::spawn(async move {
         loop {
@@ -63,37 +62,67 @@ pub(crate) fn start_cache_trim(gif_cache: cache::Memory<[Url]>) {
     });
 }
 
-/// Subscribe to announcements of new anime episodes from the anime api.
-///
-/// ### Arguments
-///
-/// - `db` - the database connection
-/// - `anime_url` - the base url of the anime api
-/// - `discord` - the discord http client and cache
-pub(crate) fn start_anime_subscription(
-    db: BotDatabase,
-    anime_url: &'static str,
-    discord_cache: Arc<Cache>,
-    discord_http: Arc<Http>,
-) {
-    let (tx, rx) = channel(16);
+#[derive(Clone)]
+pub(crate) struct DiscordApi(Arc<Http>, Arc<Cache>);
 
-    tokio::spawn(otaku::subscribe(anime_url, db, tx));
-    tokio::spawn(embed_sender(discord_cache, discord_http, rx));
+impl From<&Serenity> for DiscordApi {
+    fn from(value: &Serenity) -> Self {
+        Self(Arc::clone(&value.http), Arc::clone(&value.cache))
+    }
 }
 
-async fn embed_sender(
-    discord_cache: Arc<Cache>,
-    discord_http: Arc<Http>,
-    mut rx: Receiver<Subscribed<DownloadCollection>>,
-) {
-    loop {
-        if let Some(message) = rx.recv().await {
-            tokio::spawn(process_downloads_subscription(
-                discord_cache.clone(),
-                discord_http.clone(),
-                message,
-            ));
+impl DiscordApi {
+    /// Subscribe to announcements of new anime episodes from the anime api.
+    ///
+    /// ### Arguments
+    ///
+    /// - `db` - the database connection
+    /// - `url` - the base url of the anime api
+    pub(crate) fn publish_anime_updates(self, db: BotDatabase, url: &'static str) {
+        let (tx, rx) = channel(16);
+
+        tokio::spawn(otaku::subscribe(url, db, tx));
+        tokio::spawn(self.embed_sender(rx));
+    }
+
+    async fn embed_sender(self, mut rx: Receiver<Subscribed<DownloadCollection>>) {
+        while let Some(message) = rx.recv().await {
+            self.process_downloads_subscription(message).await;
+        }
+    }
+
+    #[instrument(skip_all, fields(title))]
+    async fn process_downloads_subscription(&self, message: Subscribed<DownloadCollection>) {
+        let title = format!("{} {}", message.content.title, message.content.variant);
+        tracing::Span::current().record("title", &title);
+
+        let embed = CreateEmbed::new()
+            .title(title)
+            .timestamp(message.content.created_at)
+            .fields(download_fields(message.content.downloads));
+
+        let channel_ids = channel_ids(&message.subscribers);
+        info!("Notifying {} channels", channel_ids.len());
+        let set: JoinSet<()> = channel_ids
+            .map(|channel_id| self.send_embed(channel_id, embed.clone()))
+            .collect();
+        set.join_all().await;
+    }
+
+    fn send_embed(
+        &self,
+        channel_id: MessageChannelId,
+        embed: CreateEmbed,
+    ) -> impl Future<Output = ()> + 'static {
+        let http = Arc::clone(&self.0);
+        let cache = Arc::clone(&self.1);
+        async move {
+            if let Err(err) = channel_id.send_embed(http, embed).await {
+                error!(
+                    channel_id = channel_id.format(&cache),
+                    "Failed to send embed, {err}",
+                );
+            }
         }
     }
 }
@@ -143,32 +172,6 @@ impl MessageChannelId {
                 };
                 format!("{} #{}", guild.name, channel.name)
             }
-        }
-    }
-}
-
-#[instrument(skip_all, fields(title))]
-async fn process_downloads_subscription(
-    discord_cache: Arc<Cache>,
-    discord_http: Arc<Http>,
-    message: Subscribed<DownloadCollection>,
-) {
-    let title = format!("{} {}", message.content.title, message.content.variant);
-    tracing::Span::current().record("title", &title);
-
-    let embed = CreateEmbed::new()
-        .title(title)
-        .timestamp(message.content.created_at)
-        .fields(download_fields(message.content.downloads));
-
-    let channel_ids = channel_ids(&message.subscribers);
-    info!("Notifying {} channels", channel_ids.len());
-    for channel_id in channel_ids {
-        if let Err(err) = channel_id.send_embed(&discord_http, embed.clone()).await {
-            error!(
-                channel_id = channel_id.format(&discord_cache),
-                "Failed to send embed to, {err}",
-            );
         }
     }
 }

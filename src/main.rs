@@ -1,6 +1,6 @@
 extern crate core;
 
-use crate::background_tasks::{start_anime_subscription, start_cache_trim, start_gif_updater};
+use crate::background_tasks::{DiscordApi, start_cache_trim, start_gif_updater};
 use crate::commands::CommandError;
 use crate::commands::gifs::GifError;
 use consts::BASE_GIF_CONFIG;
@@ -8,8 +8,9 @@ use db::{BotDatabase, DatabaseConnection};
 use dotenv::dotenv;
 use poise::CreateReply;
 use serenity::all::GatewayIntents;
-use serenity::client::Client;
+use serenity::client::Client as Serenity;
 use std::env;
+use tenor::Client as Tenor;
 use tracing::error;
 use tracing_subscriber::prelude::*;
 use url::Url;
@@ -21,10 +22,12 @@ mod consts;
 mod context;
 mod util;
 
+type GifCache = cache::Memory<String, [Url]>;
+
 #[derive(Debug, Clone)]
-struct SpiderBot<'tenor_config> {
-    gif_cache: cache::Memory<[Url]>,
-    tenor: tenor::Client<'tenor_config>,
+struct SpiderBot<'tenor> {
+    gif_cache: GifCache,
+    tenor: Tenor<'tenor>,
     database: BotDatabase,
 }
 
@@ -36,7 +39,9 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let discord_token = env::var("DISCORD_TOKEN")?.leak();
+    let discord_token: &str = env::var("DISCORD_TOKEN")?.leak();
+    let tenor_token: &str = env::var("TENOR_TOKEN")?.leak();
+
     let anime_url = match resolve_env("ANIME_URL") {
         Ok(anime_url) => Some(anime_url.leak()),
         Err(error) => {
@@ -44,15 +49,14 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
-    let tenor_token = env::var("TENOR_TOKEN")?;
 
     let database = db::connect(env!("CARGO_PKG_NAME")).await?;
     database.migrate().await?;
 
     // Login with a bot token from the environment
     let bot = SpiderBot {
-        gif_cache: cache::Memory::new(),
-        tenor: tenor::Client::with_config(tenor_token, Some(BASE_GIF_CONFIG)),
+        gif_cache: GifCache::new(),
+        tenor: Tenor::with_config(tenor_token, Some(BASE_GIF_CONFIG)),
         database: database.clone(),
     };
 
@@ -88,17 +92,12 @@ async fn main() -> anyhow::Result<()> {
         })
         .build();
 
-    let mut client = Client::builder(discord_token, intents)
+    let mut client = Serenity::builder(discord_token, intents)
         .framework(framework)
         .await?;
 
     if let Some(anime_url) = anime_url {
-        start_anime_subscription(
-            database,
-            anime_url,
-            client.cache.clone(),
-            client.http.clone(),
-        );
+        DiscordApi::from(&client).publish_anime_updates(database, anime_url);
     }
 
     let shard_manager = client.shard_manager.clone();
