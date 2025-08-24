@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::sync::Arc;
 
 use itertools::Itertools;
 use url::Url;
@@ -13,44 +12,41 @@ pub mod models;
 
 #[derive(Debug, Clone)]
 pub struct Client<'config> {
-    api_key: Arc<str>,
+    api_key: &'config str,
     reqwest: reqwest::Client,
     base_config: Option<Config<'config>>,
 }
 
 impl<'config> Client<'config> {
     #[must_use]
-    pub fn new(api_key: impl Into<Arc<str>>) -> Client<'config> {
+    pub fn new(api_key: &'config str) -> Client<'config> {
         Self::with_config(api_key, None)
     }
 
     #[must_use]
-    pub fn with_config(
-        api_key: impl Into<Arc<str>>,
-        config: Option<Config<'config>>,
-    ) -> Client<'config> {
+    pub fn with_config(api_key: &'config str, config: Option<Config<'config>>) -> Client<'config> {
         Client {
-            api_key: api_key.into(),
+            api_key,
             reqwest: reqwest::Client::new(),
             base_config: config,
         }
     }
 
-    fn build_query_string<'a: 'config>(
+    fn build_query<'a: 'config>(
         &'a self,
         query: &'a str,
         config: Option<Config<'a>>,
     ) -> Vec<(&'static str, Cow<'config, str>)> {
         match self.merge_config(config) {
             None => vec![
-                ("key", self.api_key.as_ref().into()),
+                ("key", Cow::Borrowed(self.api_key)),
                 ("q", Cow::Borrowed(query)),
             ],
 
             Some(cfg) => {
                 // always overallocate to maximum capacity
                 let mut params: Vec<(&str, Cow<'_, str>)> = Vec::with_capacity(9);
-                params.push(("key", self.api_key.as_ref().into()));
+                params.push(("key", Cow::Borrowed(self.api_key)));
                 params.push(("q", Cow::Borrowed(query)));
                 if let Some(country) = cfg.country {
                     params.push(("country", Cow::Borrowed(country)));
@@ -74,7 +70,7 @@ impl<'config> Client<'config> {
                     params.push(("random", Cow::Borrowed(random)));
                 }
                 if let Some(limit) = cfg.limit {
-                    params.push(("limit", limit.to_string().into()));
+                    params.push(("limit", Cow::Owned(limit.to_string())));
                 }
                 if let Some(position) = cfg.position {
                     params.push(("pos", Cow::Borrowed(position)));
@@ -90,7 +86,7 @@ impl<'config> Client<'config> {
     ///
     /// Returns an error when tenor cannot be reached or an error is returned from the api.
     pub async fn search(&self, query: &str, config: Option<Config<'_>>) -> Result<Vec<Gif>, Error> {
-        let query = self.build_query_string(query, config);
+        let query = self.build_query(query, config);
 
         let url = Url::parse_with_params("https://tenor.googleapis.com/v2/search", &query)?;
         let result: Response<Vec<Gif>> = self.reqwest.get(url).send().await?.json().await?;
