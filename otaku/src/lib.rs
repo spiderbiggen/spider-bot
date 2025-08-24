@@ -4,31 +4,12 @@ use proto::api::v2::downloads_client::DownloadsClient;
 use std::cmp::min;
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::mpsc::error::SendError;
 use tonic::codec::CompressionEncoding;
 use tracing::{debug, error, info, instrument};
 
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 const BACKOFF_INTERVAL: Duration = Duration::from_millis(125);
 const RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error(transparent)]
-    FromDB(#[from] db::Error),
-    #[error(transparent)]
-    FromGrpc(#[from] proto::Error),
-    #[error(transparent)]
-    Sender(#[from] SendError<DownloadCollection>),
-}
-
-#[derive(thiserror::Error, Debug)]
-enum ConnectionError {
-    #[error(transparent)]
-    Status(#[from] tonic::Status),
-    #[error("The connection was closed by the remote")]
-    Closed,
-}
 
 pub async fn subscribe(
     endpoint: &'static str,
@@ -37,10 +18,14 @@ pub async fn subscribe(
 ) {
     loop {
         let client = connect_with_backoff(endpoint).await;
-        if let Err(err) = handle_stream(client, &db, &sender).await {
-            error!("Closed anime subscription with {err}, Reconnecting in 5 seconds");
-            tokio::time::sleep(RECONNECT_INTERVAL).await;
+        let result = handle_stream(client, &db, &sender).await;
+
+        match result {
+            Ok(()) => error!("Anime subscription dropped"),
+            Err(err) => error!("Anime subscription dropped: {err}"),
         }
+
+        tokio::time::sleep(RECONNECT_INTERVAL).await;
     }
 }
 
@@ -68,15 +53,14 @@ async fn handle_stream(
     mut client: DownloadsClient<tonic::transport::Channel>,
     db: &BotDatabase,
     sender: &Sender<Subscribed<DownloadCollection>>,
-) -> Result<(), ConnectionError> {
-    let mut stream = client.subscribe(()).await?;
+) -> Result<(), tonic::Status> {
+    let mut stream = client.subscribe(()).await?.into_inner();
     info!("Connected to grpc service");
-    loop {
-        let Some(incoming_message) = stream.get_mut().message().await? else {
-            return Err(ConnectionError::Closed);
-        };
-        process_message(db, sender, incoming_message).await;
+
+    while let Some(message) = stream.message().await? {
+        process_message(db, sender, message).await;
     }
+    Ok(())
 }
 
 #[instrument(skip_all)]
@@ -100,7 +84,7 @@ async fn process_message(
     let collection: DownloadCollection = match incoming_message.try_into() {
         Ok(collection) => collection,
         Err(err) => {
-            error!("Failed to convert message to DownloadCollection: {err}");
+            error!("Failed to convert an incoming message to DownloadCollection: {err}");
             return;
         }
     };
@@ -114,6 +98,6 @@ async fn process_message(
         subscribers,
     };
     if let Err(err) = sender.send(outbound_message).await {
-        error!("Failed to forward incoming message: {err}");
+        error!("Failed to forward an incoming message: {err}");
     }
 }

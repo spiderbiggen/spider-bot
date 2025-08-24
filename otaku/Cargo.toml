@@ -13,8 +13,7 @@ proto = { path = "../proto" }
 domain = { path = "../domain" }
 db = { path = "../db" }
 
-thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio.workspace = true
 tonic = { version = "0.14.0", features = ["gzip"] }
-tracing = { workspace = true }
+tracing.workspace = true
 
