@@ -2,7 +2,7 @@ use crate::commands::gifs::GifError;
 use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
 use crate::context::{GifCacheExt, GifContextExt};
 use crate::util::{DateRange, DayOfMonth};
-use crate::{GifCache, cache, day_of_month};
+use crate::{GifCache, day_of_month};
 use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use rand::Rng;
