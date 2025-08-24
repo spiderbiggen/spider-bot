@@ -126,33 +126,33 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  deploy:
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Get Deployment API Token
-        id: token
-        uses: fjogeleit/http-request-action@main
-        with:
-          url: ${{secrets.DEPLOY_AUTH_URL}}
-          method: 'POST'
-          timeout: 30000
-          data: >-
-            {
-              "grant_type":"password",
-              "prompt":"none",
-              "client_id": "${{secrets.DEPLOY_CLIENT_ID}}",
-              "scope": "openid kube",
-              "username": "${{secrets.DEPLOY_USERNAME}}",
-              "password": "${{secrets.DEPLOY_PASSWORD}}"
-            }
-          contentType: "application/x-www-form-urlencoded"
-
-      - name: Update
-        id: refresh
-        uses: fjogeleit/http-request-action@main
-        with:
-          url: "${{secrets.DEPLOY_URL}}?image=${{needs.publish.outputs.tag}}"
-          method: 'PATCH'
-          timeout: 30000
-          bearerToken: ${{ fromJson(steps.token.outputs.response).access_token }}
+#  deploy:
+#    needs: publish
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Get Deployment API Token
+#        id: token
+#        uses: fjogeleit/http-request-action@main
+#        with:
+#          url: ${{secrets.DEPLOY_AUTH_URL}}
+#          method: 'POST'
+#          timeout: 30000
+#          data: >-
+#            {
+#              "grant_type":"password",
+#              "prompt":"none",
+#              "client_id": "${{secrets.DEPLOY_CLIENT_ID}}",
+#              "scope": "openid kube",
+#              "username": "${{secrets.DEPLOY_USERNAME}}",
+#              "password": "${{secrets.DEPLOY_PASSWORD}}"
+#            }
+#          contentType: "application/x-www-form-urlencoded"
+#
+#      - name: Update
+#        id: refresh
+#        uses: fjogeleit/http-request-action@main
+#        with:
+#          url: "${{secrets.DEPLOY_URL}}?image=${{needs.publish.outputs.tag}}"
+#          method: 'PATCH'
+#          timeout: 30000
+#          bearerToken: ${{ fromJson(steps.token.outputs.response).access_token }}
