@@ -51,7 +51,7 @@ jobs:
           use-cross: true
           cross-version: ${{ matrix.info.cross-version || '0.2.5' }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: artifact ${{ matrix.info.target }}
           path: |
@@ -103,7 +103,7 @@ jobs:
             latest=auto
 
       - name: Download artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           path: target
 
