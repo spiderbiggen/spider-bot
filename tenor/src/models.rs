@@ -41,7 +41,7 @@ impl Debug for Gif {
 /// Tenor supports filtering content based on ratings that map to the Motion Picture Association (MPA)
 /// It's important to note that tenor doesn't surface the type of nudity that can be found in R-rated films.
 /// If you become aware of such content, inform Tenor immediately by contacting support@tenor.com.
-#[derive(Debug, Copy, Clone, PartialEq, EnumString, IntoStaticStr)]
+#[derive(Debug, Copy, Clone, PartialEq, EnumString, IntoStaticStr, Default)]
 pub enum ContentFilter {
     /// Rated G
     #[strum(serialize = "high")]
@@ -54,18 +54,13 @@ pub enum ContentFilter {
     Low,
     /// Rated G, PG, PG-13 and R (no nudity)
     #[strum(serialize = "off")]
+    #[default]
     Off,
 }
 
 impl From<ContentFilter> for Cow<'static, str> {
     fn from(value: ContentFilter) -> Self {
         Self::Borrowed(value.into())
-    }
-}
-
-impl Default for ContentFilter {
-    fn default() -> Self {
-        Self::Off
     }
 }
 
