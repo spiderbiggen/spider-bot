@@ -1,5 +1,3 @@
-use tracing::{error, instrument};
-
 use crate::commands::gifs::GifError;
 use crate::context::Context;
 
@@ -18,7 +16,7 @@ pub(crate) enum CommandError {
     BalanceTransaction(#[from] db::BalanceTransactionError),
 }
 
-#[instrument(skip_all)]
+#[tracing::instrument(skip_all)]
 #[poise::command(slash_command)]
 pub(crate) async fn version(ctx: Context<'_, '_>) -> Result<(), CommandError> {
     const PKG_REF: &str = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
