@@ -87,6 +87,14 @@ pub trait UserBalanceConnection {
         user_id: u64,
         value: i64,
     ) -> impl Future<Output = Result<i64, Self::Error>>;
+
+    fn upsert_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        delta: i64,
+        initial_balance: i64,
+    ) -> impl Future<Output = Result<i64, Self::Error>>;
 }
 
 pub trait UserBalanceTransaction {
@@ -214,6 +222,16 @@ impl UserBalanceConnection for BotDatabase {
     ) -> Result<i64, Self::Error> {
         add_user_balance(&**self, guild_id, user_id, value).await
     }
+
+    async fn upsert_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        delta: i64,
+        initial_balance: i64,
+    ) -> Result<i64, Self::Error> {
+        upsert_user_balance(&**self, guild_id, user_id, delta, initial_balance).await
+    }
 }
 
 impl UserBalanceTransaction for BotDatabase {
@@ -325,4 +343,28 @@ where
     .await?;
 
     Ok(value)
+}
+
+async fn upsert_user_balance<'e, E>(
+    executor: E,
+    guild_id: u64,
+    user_id: u64,
+    delta: i64,
+    initial_balance: i64,
+) -> Result<i64, Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    #[expect(clippy::cast_possible_wrap)]
+    let balance = sqlx::query_file_scalar!(
+        "queries/balance/upsert_user_balance.sql",
+        guild_id as i64,
+        user_id as i64,
+        initial_balance,
+        delta,
+    )
+    .fetch_one(executor)
+    .await?;
+
+    Ok(balance)
 }
