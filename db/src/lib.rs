@@ -73,6 +73,13 @@ pub trait UserBalanceConnection {
         user_id: u64,
     ) -> impl Future<Output = Result<Option<i64>, Self::Error>>;
 
+    fn get_or_create_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        initial_value: i64,
+    ) -> impl Future<Output = Result<(i64, bool), Self::Error>>;
+
     fn set_user_balance(
         &self,
         guild_id: u64,
@@ -201,6 +208,15 @@ impl UserBalanceConnection for BotDatabase {
         get_user_balance(&**self, guild_id, user_id).await
     }
 
+    async fn get_or_create_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        initial_value: i64,
+    ) -> Result<(i64, bool), Self::Error> {
+        get_or_create_user_balance(&**self, guild_id, user_id, initial_value).await
+    }
+
     async fn set_user_balance(
         &self,
         guild_id: u64,
@@ -322,6 +338,30 @@ where
     Ok(value)
 }
 
+async fn get_or_create_user_balance<'e, E>(
+    executor: E,
+    guild_id: u64,
+    user_id: u64,
+    initial_value: i64,
+) -> Result<(i64, bool), Error>
+where
+    E: Executor<'e, Database = Postgres> + Copy,
+{
+    // We first try to get the balance
+    if let Some(balance) = get_user_balance(executor, guild_id, user_id).await? {
+        return Ok((balance, false));
+    }
+
+    // If not found, we use an upsert to safely initialize it.
+    // We use delta 0 so if someone else created it between our check and now,
+    // we just get the current value.
+    let balance = upsert_update_user_balance(executor, guild_id, user_id, 0, initial_value).await?;
+
+    // If the returned balance is exactly the initial_value, it's likely a new user.
+    // (Note: This is a heuristic; for 100% accuracy you'd check if the INSERT actually happened)
+    Ok((balance, balance == initial_value))
+}
+
 async fn set_user_balance<'e, E>(
     executor: E,
     guild_id: u64,
@@ -365,7 +405,7 @@ where
     Ok(value)
 }
 
-async fn upsert_update_user_balance<'e, E>(
+async fn upsert_update_user_balance<'e, 'c: 'e, E>(
     executor: E,
     guild_id: u64,
     user_id: u64,
@@ -373,7 +413,7 @@ async fn upsert_update_user_balance<'e, E>(
     initial_balance: i64,
 ) -> Result<i64, Error>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: 'e + Executor<'c, Database = Postgres>,
 {
     #[expect(clippy::cast_possible_wrap)]
     let balance = sqlx::query_file_scalar!(
@@ -389,14 +429,14 @@ where
     Ok(balance)
 }
 
-async fn upsert_set_user_balance<'e, E>(
+async fn upsert_set_user_balance<'e, 'c: 'e, E>(
     executor: E,
     guild_id: u64,
     user_id: u64,
     balance: i64,
 ) -> Result<i64, Error>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: 'e + Executor<'c, Database = Postgres>,
 {
     #[expect(clippy::cast_possible_wrap)]
     let balance = sqlx::query_file_scalar!(

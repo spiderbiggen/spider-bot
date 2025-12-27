@@ -4,7 +4,7 @@ use futures::StreamExt;
 use poise::CreateReply;
 use serenity::all::{Member, Permissions};
 use std::fmt::Write;
-use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroU16};
+use std::num::{NonZeroI16, NonZeroU16};
 
 const INITIAL_BALANCE: i64 = 500;
 
@@ -21,20 +21,22 @@ pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::commands::Comm
 #[poise::command(slash_command)]
 pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
     ctx.defer_ephemeral().await?;
-    let db = &ctx.data().database;
 
     let guild_id = ctx.guild_id().unwrap().get();
     let user_id = ctx.author().id.get();
-    let message = match db.get_user_balance(guild_id, user_id).await? {
-        Some(balance) => format!("You currently have {balance} 🪙"),
-        None => {
-            db.create_user_balance(guild_id, user_id, INITIAL_BALANCE)
-                .await?;
-            format!("Welcome to True Coin. You currently have {INITIAL_BALANCE} 🪙")
-        }
-    };
-    ctx.reply(message).await?;
 
+    let db = &ctx.data().database;
+    let (balance, is_new) = db
+        .get_or_create_user_balance(guild_id, user_id, INITIAL_BALANCE)
+        .await?;
+
+    let message = if is_new {
+        format!("Welcome to True Coin. You currently have {balance} 🪙")
+    } else {
+        format!("You currently have {balance} 🪙")
+    };
+
+    ctx.reply(message).await?;
     Ok(())
 }
 
@@ -137,7 +139,7 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
         ctx.say("There are no users in the leaderboard.").await?;
         return Ok(());
     }
-    let mut message = String::from("```\nCurrent True Coin balances:\n");
+
     let member_balances: Vec<_> = futures::stream::iter(users)
         .map(async |user_balance| {
             let member = guild.member(&ctx, user_balance.user_id).await.ok()?;
@@ -162,13 +164,15 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
 
     let width = member_balances
         .iter()
-        .map(|MemberBalance { username, .. }| username.len())
+        .map(|m| m.username.len())
         .max()
         .unwrap_or(0);
+
+    let mut message = String::from("```\nCurrent True Coin balances:\n");
     for MemberBalance { username, balance } in member_balances {
-        writeln!(&mut message, "{username:>width$}: {balance:>4} 🪙").unwrap();
+        let _ = writeln!(&mut message, "{username:>width$}: {balance:>4} 🪙");
     }
-    writeln!(&mut message, "```").unwrap();
+    message += "```";
     ctx.say(message).await?;
 
     Ok(())

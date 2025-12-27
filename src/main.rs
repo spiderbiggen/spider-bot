@@ -11,7 +11,6 @@ use serenity::all::GatewayIntents;
 use serenity::client::Client as Serenity;
 use std::env;
 use tenor::Client as Tenor;
-use tracing::error;
 use tracing_subscriber::prelude::*;
 use url::Url;
 
@@ -45,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
     let anime_url = match resolve_env("ANIME_URL") {
         Ok(anime_url) => Some(anime_url.leak()),
         Err(error) => {
-            error!("Failed to resolve ANIME_URL: {error}");
+            tracing::warn!("Failed to resolve ANIME_URL: {error}");
             None
         }
     };

@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO user_balance (guild_id, user_id, balance, created_at, updated_at)\nVALUES ($1, $2, $3, NOW(), NOW())\nON CONFLICT (guild_id, user_id)\n    DO UPDATE SET balance    = $4,\n                  updated_at = NOW()\nRETURNING balance;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "balance",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7e4fb13c80c3b22e08e1623822add2cc781065792a872dc5b9b134ba6c133a7b"
+}
