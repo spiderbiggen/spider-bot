@@ -12,8 +12,6 @@ pub(crate) enum CommandError {
     Serenity(#[from] serenity::Error),
     #[error(transparent)]
     Database(#[from] db::Error),
-    #[error(transparent)]
-    BalanceTransaction(#[from] db::BalanceTransactionError),
 }
 
 #[tracing::instrument(skip_all)]

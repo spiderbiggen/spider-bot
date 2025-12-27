@@ -1,12 +1,10 @@
 use crate::context::Context;
-use db::{UserBalanceConnection, UserBalanceTransaction};
+use db::{BalanceTransactionError, UserBalanceConnection, UserBalanceTransaction};
 use futures::StreamExt;
-use poise::serenity_prelude::Permissions;
-use poise::{CreateReply, send_reply};
-use std::collections::BTreeSet;
+use poise::CreateReply;
+use serenity::all::{Member, Permissions};
 use std::fmt::Write;
-use std::sync::atomic;
-use std::sync::atomic::Ordering;
+use std::num::{NonZeroI16, NonZeroU16};
 
 const INITIAL_BALANCE: i64 = 500;
 
@@ -23,37 +21,46 @@ pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::commands::Comm
 #[poise::command(slash_command)]
 pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
     ctx.defer_ephemeral().await?;
-    let db = &ctx.data().database;
 
     let guild_id = ctx.guild_id().unwrap().get();
     let user_id = ctx.author().id.get();
-    let message = match db.get_user_balance(guild_id, user_id).await? {
-        Some(balance) => format!("You currently have {balance} 🪙"),
-        None => {
-            db.create_user_balance(guild_id, user_id, INITIAL_BALANCE)
-                .await?;
-            format!("Welcome to True Coin. You currently have {INITIAL_BALANCE} 🪙")
-        }
-    };
-    ctx.reply(message).await?;
 
+    let db = &ctx.data().database;
+    let (balance, is_new) = db
+        .get_or_create_user_balance(guild_id, user_id, INITIAL_BALANCE)
+        .await?;
+
+    let message = if is_new {
+        format!("Welcome to True Coin. You currently have {balance} 🪙")
+    } else {
+        format!("You currently have {balance} 🪙")
+    };
+
+    ctx.reply(message).await?;
     Ok(())
 }
 
 #[poise::command(slash_command)]
 pub(crate) async fn transfer(
     ctx: Context<'_, '_>,
-    #[description = "Who to send coins to"] member: serenity::all::Member,
+    #[description = "Who to send coins to"] member: Member,
     #[description = "Amount of coins to send to another user"]
     #[max = 1000]
-    amount: u32,
+    amount: NonZeroU16,
 ) -> Result<(), crate::commands::CommandError> {
+    if member.user.id == ctx.author().id {
+        let reply = CreateReply::default()
+            .ephemeral(true)
+            .content("You cannot send coins to yourself.");
+        ctx.send(reply).await?;
+        return Ok(());
+    }
+
     if member.user.bot {
         let reply = CreateReply::default()
-            .reply(true)
             .ephemeral(true)
             .content("Bot users cannot handle the true power of coins.");
-        send_reply(ctx, reply).await?;
+        ctx.send(reply).await?;
         return Ok(());
     }
 
@@ -62,50 +69,55 @@ pub(crate) async fn transfer(
     let Some(from_user) = ctx.author_member().await else {
         return Ok(());
     };
-    let from_user_id = from_user.user.id.get();
     let guild_id = ctx.guild_id().unwrap().get();
     let result = db
         .transfer_user_balance(
             guild_id,
-            from_user_id,
+            from_user.user.id.get(),
             member.user.id.get(),
-            i64::from(amount),
+            i64::from(amount.get()),
         )
         .await;
 
+    let (from_balance, to_balance) = match result {
+        Err(err) => return handle_transfer_error(ctx, &member, err).await,
+        Ok(result) => result,
+    };
+
     let to_name = &member.display_name();
     let from_name = &from_user.display_name();
-    let (message, ephemeral) = match result {
-        Ok((from_balance, to_balance)) => {
-            let width = from_name.len().max(to_name.len());
-            let message = format!(
-                "```\nSuccessfully transferred {amount} 🪙 to {to_name}. New Balance:\n\
+    let width = from_name.len().max(to_name.len());
+    let message = format!(
+        "```\nSuccessfully transferred {amount} 🪙 to {to_name}. New Balance:\n\
                 {from_name:>width$}: {from_balance:>4} 🪙\n\
                 {to_name:>width$}: {to_balance:>4} 🪙\n```",
-            );
-            (message, false)
+    );
+    ctx.say(message).await?;
+    Ok(())
+}
+
+async fn handle_transfer_error(
+    ctx: Context<'_, '_>,
+    member: &Member,
+    err: BalanceTransactionError,
+) -> Result<(), crate::commands::CommandError> {
+    let message = match err {
+        BalanceTransactionError::Base(err) => return Err(err.into()),
+        BalanceTransactionError::SenderUninitialized => {
+            "Use `/coins balance` to initialize your coins.".to_string()
         }
-        Err(db::BalanceTransactionError::SenderUninitialized) => {
-            let message = "Use `/coins balance` to initialize your coins.";
-            (message.to_string(), true)
+        BalanceTransactionError::RecipientUninitialized => {
+            format!(
+                "Tell @{} to use `/coins balance` to initialize their coins.",
+                member.display_name()
+            )
         }
-        Err(db::BalanceTransactionError::RecipientUninitialized) => {
-            let message =
-                format!("Tell @{to_name} to use `/coins balance` to initialize their coins.");
-            (message, true)
+        BalanceTransactionError::InsufficientBalance(current_amount) => {
+            format!("You do not have enough coins. Current balance {current_amount} 🪙")
         }
-        Err(db::BalanceTransactionError::InsufficientBalance(current_amount)) => {
-            let message =
-                format!("You do not have enough coins. Current balance {current_amount} 🪙");
-            (message, true)
-        }
-        Err(err) => return Err(err.into()),
     };
-    let reply = CreateReply::default()
-        .reply(true)
-        .ephemeral(ephemeral)
-        .content(message);
-    send_reply(ctx, reply).await?;
+    let reply = CreateReply::default().ephemeral(true).content(message);
+    ctx.send(reply).await?;
     Ok(())
 }
 
@@ -123,34 +135,45 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
     let guild = ctx.guild_id().unwrap();
     let guild_id = guild.get();
     let users = db.get_top_user_balances(guild_id).await?;
-    let mut message = String::from("```\nCurrent True Coin balances:\n");
-    let mut max_length = atomic::AtomicUsize::new(0);
-    let member_balances: BTreeSet<_> = futures::stream::iter(users)
-        .filter_map(async |user_balance| {
+    if users.is_empty() {
+        ctx.say("There are no users in the leaderboard.").await?;
+        return Ok(());
+    }
+
+    let member_balances: Vec<_> = futures::stream::iter(users)
+        .map(async |user_balance| {
             let member = guild.member(&ctx, user_balance.user_id).await.ok()?;
             if member.user.bot {
                 return None;
             }
 
-            let username = member.display_name().to_string();
-            max_length.fetch_max(username.len(), Ordering::Relaxed);
             Some(MemberBalance {
-                username,
+                username: member.display_name().to_string(),
                 balance: user_balance.balance,
             })
         })
+        .buffered(8)
+        .filter_map(futures::future::ready)
         .collect()
         .await;
 
-    let width = *max_length.get_mut();
-    member_balances
-        .into_iter()
-        .rev()
-        .for_each(|MemberBalance { username, balance }| {
-            writeln!(&mut message, "{username:>width$}: {balance:>4} 🪙").unwrap();
-        });
-    writeln!(&mut message, "```").unwrap();
-    ctx.reply(message).await?;
+    if member_balances.is_empty() {
+        ctx.say("There are no users in the leaderboard.").await?;
+        return Ok(());
+    }
+
+    let width = member_balances
+        .iter()
+        .map(|m| m.username.len())
+        .max()
+        .unwrap_or(0);
+
+    let mut message = String::from("```\nCurrent True Coin balances:\n");
+    for MemberBalance { username, balance } in member_balances {
+        let _ = writeln!(&mut message, "{username:>width$}: {balance:>4} 🪙");
+    }
+    message += "```";
+    ctx.say(message).await?;
 
     Ok(())
 }
@@ -170,52 +193,47 @@ async fn author_is_guild_admin(
 #[poise::command(slash_command, check = "author_is_guild_admin")]
 pub(crate) async fn set(
     ctx: Context<'_, '_>,
-    #[description = "Who to set coins for"] member: serenity::all::Member,
+    #[description = "Who to set coins for"] member: Member,
     #[description = "Amount of coins the user should have"]
-    #[min = 0]
     #[max = 999_999_999]
-    amount: i64,
+    amount: i32,
 ) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
     let guild_id = ctx.guild_id().unwrap().get();
     let user_id = member.user.id.get();
 
-    match db.get_user_balance(guild_id, user_id).await? {
-        Some(_) => db.set_user_balance(guild_id, user_id, amount).await?,
-        None => db.create_user_balance(guild_id, user_id, amount).await?,
-    }
+    let amount = i64::from(amount);
+    let amount = db
+        .upsert_set_user_balance(guild_id, user_id, amount)
+        .await?;
     let message = format!("{} now has {amount} 🪙", member.display_name());
-    ctx.reply(message).await?;
+    ctx.say(message).await?;
     Ok(())
 }
 
 #[poise::command(slash_command, check = "author_is_guild_admin")]
 pub(crate) async fn update(
     ctx: Context<'_, '_>,
-    #[description = "Who to update coins for"] member: serenity::all::Member,
+    #[description = "Who to update coins for"] member: Member,
     #[description = "Amount of coins the user should gain/lose"]
     #[min = -500]
     #[max = 500]
-    amount: i64,
+    amount: NonZeroI16,
 ) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
     let guild_id = ctx.guild_id().unwrap().get();
     let user_id = member.user.id.get();
 
-    let balance = match db.get_user_balance(guild_id, user_id).await? {
-        Some(_) => db.add_user_balance(guild_id, user_id, amount).await?,
-        None => {
-            let balance = INITIAL_BALANCE + amount;
-            db.create_user_balance(guild_id, user_id, balance).await?;
-            balance
-        }
-    };
+    let amount = i64::from(amount.get());
+    let balance = db
+        .upsert_update_user_balance(guild_id, user_id, amount, INITIAL_BALANCE + amount)
+        .await?;
     let message = format!(
         "{} now has {balance} ({amount:+}) 🪙",
         member.display_name()
     );
-    ctx.reply(message).await?;
+    ctx.say(message).await?;
     Ok(())
 }
