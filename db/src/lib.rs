@@ -20,8 +20,6 @@ pub enum Error {
 #[derive(thiserror::Error, Debug)]
 pub enum BalanceTransactionError {
     #[error(transparent)]
-    Sqlx(#[from] sqlx::Error),
-    #[error(transparent)]
     Base(#[from] Error),
     #[error("insufficient balance: {0}")]
     InsufficientBalance(i64),
@@ -29,6 +27,12 @@ pub enum BalanceTransactionError {
     SenderUninitialized,
     #[error("recipient did not exist")]
     RecipientUninitialized,
+}
+
+impl From<sqlx::Error> for BalanceTransactionError {
+    fn from(err: sqlx::Error) -> Self {
+        Self::Base(err.into())
+    }
 }
 
 pub trait DatabaseConnection {
@@ -88,12 +92,19 @@ pub trait UserBalanceConnection {
         value: i64,
     ) -> impl Future<Output = Result<i64, Self::Error>>;
 
-    fn upsert_user_balance(
+    fn upsert_update_user_balance(
         &self,
         guild_id: u64,
         user_id: u64,
         delta: i64,
         initial_balance: i64,
+    ) -> impl Future<Output = Result<i64, Self::Error>>;
+
+    fn upsert_set_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        balance: i64,
     ) -> impl Future<Output = Result<i64, Self::Error>>;
 }
 
@@ -223,14 +234,23 @@ impl UserBalanceConnection for BotDatabase {
         add_user_balance(&**self, guild_id, user_id, value).await
     }
 
-    async fn upsert_user_balance(
+    async fn upsert_update_user_balance(
         &self,
         guild_id: u64,
         user_id: u64,
         delta: i64,
         initial_balance: i64,
     ) -> Result<i64, Self::Error> {
-        upsert_user_balance(&**self, guild_id, user_id, delta, initial_balance).await
+        upsert_update_user_balance(&**self, guild_id, user_id, delta, initial_balance).await
+    }
+
+    async fn upsert_set_user_balance(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+        balance: i64,
+    ) -> Result<i64, Self::Error> {
+        upsert_set_user_balance(&**self, guild_id, user_id, balance).await
     }
 }
 
@@ -345,7 +365,7 @@ where
     Ok(value)
 }
 
-async fn upsert_user_balance<'e, E>(
+async fn upsert_update_user_balance<'e, E>(
     executor: E,
     guild_id: u64,
     user_id: u64,
@@ -357,11 +377,33 @@ where
 {
     #[expect(clippy::cast_possible_wrap)]
     let balance = sqlx::query_file_scalar!(
-        "queries/balance/upsert_user_balance.sql",
+        "queries/balance/upsert_update_user_balance.sql",
         guild_id as i64,
         user_id as i64,
         initial_balance,
         delta,
+    )
+    .fetch_one(executor)
+    .await?;
+
+    Ok(balance)
+}
+
+async fn upsert_set_user_balance<'e, E>(
+    executor: E,
+    guild_id: u64,
+    user_id: u64,
+    balance: i64,
+) -> Result<i64, Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    #[expect(clippy::cast_possible_wrap)]
+    let balance = sqlx::query_file_scalar!(
+        "queries/balance/upsert_set_user_balance.sql",
+        guild_id as i64,
+        user_id as i64,
+        balance,
     )
     .fetch_one(executor)
     .await?;
