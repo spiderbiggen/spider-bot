@@ -9,11 +9,10 @@ use rand::prelude::*;
 use serenity::all::MessageFlags;
 use serenity::{CreateMessage, Mentionable, User};
 use std::borrow::Cow;
-use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use tenor::models::{Gif, MediaFilter};
-use tracing::{debug, error, info, instrument};
+use tracing::{error, info, instrument};
 use url::Url;
 
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
@@ -33,19 +32,18 @@ pub(crate) enum GifError {
 }
 
 trait GifSliceExt {
-    fn take(&self) -> Result<String, GifError>;
+    fn take(&self) -> Result<Url, GifError>;
 }
 
 impl<T> GifSliceExt for T
 where
     T: AsRef<[Url]>,
 {
-    fn take(&self) -> Result<String, GifError> {
-        let url = self
-            .as_ref()
+    fn take(&self) -> Result<Url, GifError> {
+        self.as_ref()
             .choose(&mut rand::rng())
-            .ok_or(GifError::NoGifs)?;
-        Ok(url.to_string())
+            .cloned()
+            .ok_or(GifError::NoGifs)
     }
 }
 
@@ -77,8 +75,8 @@ pub(crate) async fn hurry(
     ctx: Context<'_, '_>,
     #[description = "Who should hurry up"] user: Option<User>,
 ) -> Result<(), CommandError> {
-    let mention = mention_or_here(user.as_ref());
     let gif = get_cached_gif(&ctx, HURRY_QUERY).await?;
+    let mention = mention_or_here(user.as_ref());
     ctx.reply(format!("{mention}! Hurry up!")).await?;
     send_gif_message(ctx, gif).await?;
     Ok(())
@@ -102,7 +100,10 @@ pub(crate) async fn sleep(ctx: Context<'_, '_>) -> Result<(), CommandError> {
     Ok(())
 }
 
-async fn send_gif_message(ctx: Context<'_, '_>, gif: String) -> Result<(), serenity::Error> {
+async fn send_gif_message(
+    ctx: Context<'_, '_>,
+    gif: impl Into<String>,
+) -> Result<(), serenity::Error> {
     let gif_message = CreateMessage::new()
         .flags(MessageFlags::SUPPRESS_NOTIFICATIONS)
         .content(gif);
@@ -135,14 +136,12 @@ fn mention_or_here(user: Option<&User>) -> Cow<'static, str> {
     })
 }
 
-async fn get_cached_gif(context: &impl GifContextExt<'_>, query: &str) -> Result<String, GifError> {
-    match context.gif_cache().get(query).await {
-        Some(cached) => {
-            debug!(r#"Found "{query}" gifs in cache"#);
-            cached.deref().take()
-        }
-        None => Err(GifError::NoGifs),
-    }
+async fn get_cached_gif(context: &impl GifContextExt<'_>, query: &str) -> Result<Url, GifError> {
+    context
+        .gif_cache()
+        .get_random(query)
+        .await
+        .ok_or(GifError::NoGifs)
 }
 
 async fn update_cached_gifs(

@@ -6,7 +6,6 @@ use crate::{GifCache, day_of_month};
 use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use rand::Rng;
-use rand::prelude::*;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tenor::Config;
@@ -16,7 +15,7 @@ use url::Url;
 const SLEEP_GIF_CONFIG: Config = super::RANDOM_CONFIG;
 
 #[instrument(skip_all, err)]
-pub async fn get_gif(context: &impl GifCacheExt) -> Result<String, GifError> {
+pub async fn get_gif(context: &impl GifCacheExt) -> Result<Url, GifError> {
     let date = Utc::now().date_naive();
     SLEEP_GIF_COLLECTION
         .current(date)
@@ -26,7 +25,7 @@ pub async fn get_gif(context: &impl GifCacheExt) -> Result<String, GifError> {
 
 pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
     let date = Utc::now().date_naive();
-    for &Season { resolver, range } in SLEEP_GIF_COLLECTION.seasons {
+    for Season { resolver, range } in SLEEP_GIF_COLLECTION.seasons {
         if !range.should_cache(date) {
             continue;
         }
@@ -34,33 +33,33 @@ pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
             error!("Error caching gifs for {}: {error}", resolver.name);
         }
     }
-    let resolver = SLEEP_GIF_COLLECTION.default;
+    let resolver = &SLEEP_GIF_COLLECTION.default;
     if let Err(error) = update_sleep_resolver_cache(context, resolver).await {
         error!("Error caching gifs for {}: {error}", resolver.name);
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct GifCollection<'a> {
     seasons: &'a [Season<'a>],
     default: GifResolver<'a>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct GifResolver<'a> {
     name: &'static str,
     ratio_override: Option<RatioQuery>,
     queries: CollectionData<'a>,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct RatioQuery {
-    query: &'static str,
+    gif_url: &'static str,
     numerator: u32,
     denominator: u32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Season<'a> {
     range: DateRange,
     resolver: GifResolver<'a>,
@@ -71,13 +70,13 @@ type CollectionData<'a> = &'a [&'a str];
 impl<'gifs> GifCollection<'gifs> {
     #[must_use]
     #[instrument(skip_all)]
-    fn current(&self, date: NaiveDate) -> GifResolver<'gifs> {
+    fn current(&self, date: NaiveDate) -> &GifResolver<'gifs> {
         let season = self.seasons.iter().find(|s| s.range.contains(date));
         match season {
-            None => self.default,
+            None => &self.default,
             Some(season) => {
                 debug!("found seasonal {}", season.resolver.name);
-                season.resolver
+                &season.resolver
             }
         }
     }
@@ -85,29 +84,33 @@ impl<'gifs> GifCollection<'gifs> {
 
 impl GifResolver<'_> {
     #[instrument(skip_all, err)]
-    async fn get_gif(&self, gif_cache: &GifCache) -> Result<String, GifError> {
+    async fn get_gif(&self, gif_cache: &GifCache) -> Result<Url, GifError> {
         if let Some(query) = self.get_override() {
             debug!("Found gif override");
-            return Ok(query.to_string());
+            match query.parse() {
+                Ok(url) => return Ok(url),
+                Err(error) => warn!("Error parsing gif override: {error}"),
+            }
         }
-        let collection = gif_cache.get(self.name).await.ok_or(GifError::NoGifs)?;
-        let gif = collection
-            .choose(&mut rand::rng())
+        let gif = gif_cache
+            .get_random(self.name)
+            .await
             .ok_or(GifError::NoGifs)?;
-        Ok(gif.as_str().to_string())
+        Ok(gif)
     }
 
     #[must_use]
     fn get_override(&self) -> Option<&'static str> {
         self.ratio_override
+            .as_ref()
             .filter(|ratio| rand::rng().random_ratio(ratio.numerator, ratio.denominator))
-            .map(|query| query.query)
+            .map(|query| query.gif_url)
     }
 }
 
 async fn update_sleep_resolver_cache(
     context: &impl GifContextExt<'_>,
-    resolver: GifResolver<'_>,
+    resolver: &GifResolver<'_>,
 ) -> Result<(), GifError> {
     let max_capacity = resolver.queries.len() * usize::from(GIF_COUNT);
     let mut gif_collection: HashSet<Url> = HashSet::with_capacity(max_capacity);
@@ -127,7 +130,7 @@ async fn update_sleep_resolver_cache(
 }
 
 const FROGGERS_RATIO_QUERY: RatioQuery = RatioQuery {
-    query: "https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif",
+    gif_url: "https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif",
     numerator: 1,
     denominator: 150,
 };
@@ -190,12 +193,12 @@ mod test {
                     start.month_num(),
                     start.day()
                 );
-                let end = range.start.adjust_for_leap_year(leap_year);
+                let end = range.end.adjust_for_leap_year(leap_year);
                 assert!(
                     end.to_naive_date(year).is_some(),
-                    "invalid start date: {year}-{:02}-{:02}",
-                    start.month_num(),
-                    start.day()
+                    "invalid end date: {year}-{:02}-{:02}",
+                    end.month_num(),
+                    end.day()
                 );
             }
         }

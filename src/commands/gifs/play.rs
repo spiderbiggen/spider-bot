@@ -6,6 +6,7 @@ use rustrict::CensorStr;
 use std::borrow::Cow;
 use tenor::Config;
 use tracing::error;
+use url::Url;
 
 const FALLBACK_CONFIG: Config = super::RANDOM_CONFIG;
 static PLAY_FALLBACK: &str = "games";
@@ -75,7 +76,7 @@ static GAME_AUTOCOMPLETION: &[GameQuery] = &[
 
 pub struct CommandOutput {
     pub message: String,
-    pub gif: String,
+    pub gif: Url,
 }
 
 pub fn autocomplete(partial: &str) -> Vec<&'static str> {

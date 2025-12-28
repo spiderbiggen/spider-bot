@@ -1,6 +1,7 @@
 extern crate core;
 
 use crate::background_tasks::{DiscordApi, start_cache_trim, start_gif_updater};
+use crate::cache::GifCache;
 use crate::commands::CommandError;
 use crate::commands::gifs::GifError;
 use consts::BASE_GIF_CONFIG;
@@ -12,7 +13,6 @@ use serenity::client::Client as Serenity;
 use std::env;
 use tenor::Client as Tenor;
 use tracing_subscriber::prelude::*;
-use url::Url;
 
 mod background_tasks;
 mod cache;
@@ -20,8 +20,6 @@ mod commands;
 mod consts;
 mod context;
 mod util;
-
-type GifCache = cache::Memory<String, [Url]>;
 
 #[derive(Debug, Clone)]
 struct SpiderBot<'tenor> {

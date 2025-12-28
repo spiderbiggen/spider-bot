@@ -1,22 +1,24 @@
+use crate::consts;
+use rand::prelude::IteratorRandom;
+use rustc_hash::FxHashMap;
 use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::hash::Hash;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
 use tokio::sync::RwLock;
-
-use crate::consts;
+use url::Url;
 
 #[derive(Debug, Clone)]
-pub struct Value<T: ?Sized>(Instant, Arc<T>);
-
-#[derive(Debug)]
-pub struct Memory<K, T: ?Sized> {
-    map: Arc<RwLock<HashMap<K, Value<T>>>>,
+pub struct Value {
+    fresh_until: Instant,
+    data: Arc<[Url]>,
 }
 
-impl<K, T: ?Sized> Clone for Memory<K, T> {
+#[derive(Debug)]
+pub struct GifCache {
+    map: Arc<RwLock<FxHashMap<String, Value>>>,
+}
+
+impl Clone for GifCache {
     fn clone(&self) -> Self {
         Self {
             map: Arc::clone(&self.map),
@@ -24,62 +26,74 @@ impl<K, T: ?Sized> Clone for Memory<K, T> {
     }
 }
 
-impl<K, T: ?Sized> Default for Memory<K, T> {
+impl Default for GifCache {
     fn default() -> Self {
         Self {
-            map: Arc::new(RwLock::new(HashMap::new())),
+            map: Arc::new(RwLock::new(FxHashMap::default())),
         }
     }
 }
 
-impl<K, T> Memory<K, T>
-where
-    T: ?Sized,
-    K: Eq + Hash,
-{
+impl GifCache {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub async fn get<R>(&self, key: &R) -> Option<Arc<T>>
-    where
-        R: Eq + Hash + ?Sized,
-        K: Borrow<R>,
-    {
+    #[allow(dead_code)]
+    pub async fn get(&self, key: impl Borrow<str>) -> Option<Arc<[Url]>> {
         let map = self.map.read().await;
-        map.get(key)
-            .filter(|&&Value(instant, _)| instant >= Instant::now())
-            .map(|Value(_, value)| Arc::clone(value))
+        map.get(key.borrow()).map(|v| Arc::clone(&v.data))
     }
 
-    #[expect(dead_code)]
-    pub async fn insert<O: Into<K>, V: Into<Arc<T>>>(&self, key: O, value: V) {
+    pub async fn get_random(&self, key: impl Borrow<str>) -> Option<Url> {
+        let map = self.map.read().await;
+        map.get(key.borrow())
+            .and_then(|v| v.data.iter().choose(&mut rand::rng()).cloned())
+    }
+
+    #[allow(dead_code)]
+    pub async fn insert(&self, key: impl Into<String>, value: impl Into<Arc<[Url]>>) {
         self.insert_with_duration(key, value, consts::SHORT_CACHE_LIFETIME)
             .await;
     }
 
-    pub async fn insert_with_duration<O, V>(&self, key: O, value: V, duration: Duration)
-    where
-        O: Into<K>,
-        V: Into<Arc<T>>,
-    {
-        let expiration = Instant::now() + duration;
-        self.insert_with_expiration(key, value, expiration).await;
+    pub async fn insert_with_duration(
+        &self,
+        key: impl Into<String>,
+        value: impl Into<Arc<[Url]>>,
+        duration: Duration,
+    ) {
+        let fresh_until = Instant::now() + duration;
+        self.insert_with_freshness(key, value, fresh_until).await;
     }
 
-    pub async fn insert_with_expiration<O, V>(&self, key: O, value: V, expiration: Instant)
-    where
-        O: Into<K>,
-        V: Into<Arc<T>>,
-    {
+    pub async fn insert_with_freshness(
+        &self,
+        key: impl Into<String>,
+        value: impl Into<Arc<[Url]>>,
+        fresh_until: Instant,
+    ) {
         let mut map = self.map.write().await;
-        map.insert(key.into(), Value(expiration, value.into()));
+        map.insert(
+            key.into(),
+            Value {
+                fresh_until,
+                data: value.into(),
+            },
+        );
     }
 
     pub async fn trim(&self) {
-        let now = Instant::now();
         let mut map = self.map.write().await;
-        map.retain(|_, &mut Value(expiration, _)| expiration >= now);
-        map.shrink_to_fit();
+
+        let now = Instant::now();
+        map.retain(|_, v| v.fresh_until >= now);
+
+        // Shrink to fit is a relatively expensive operation.
+        // Capacity management: only shrink if we're significantly over-allocated
+        // and have enough elements to justify the cost of reallocation.
+        if map.capacity() > 64 && map.len() * 2 < map.capacity() {
+            map.shrink_to_fit();
+        }
     }
 }
