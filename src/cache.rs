@@ -1,5 +1,5 @@
 use crate::consts;
-use rand::prelude::IteratorRandom;
+use rand::Rng;
 use rustc_hash::FxHashMap;
 use std::borrow::Borrow;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use url::Url;
 #[derive(Debug, Clone)]
 pub struct Value {
     fresh_until: Instant,
-    data: Arc<[Url]>,
+    data: Box<[Url]>,
 }
 
 #[derive(Debug)]
@@ -39,20 +39,19 @@ impl GifCache {
         Self::default()
     }
 
-    #[allow(dead_code)]
-    pub async fn get(&self, key: impl Borrow<str>) -> Option<Arc<[Url]>> {
-        let map = self.map.read().await;
-        map.get(key.borrow()).map(|v| Arc::clone(&v.data))
-    }
-
     pub async fn get_random(&self, key: impl Borrow<str>) -> Option<Url> {
         let map = self.map.read().await;
-        map.get(key.borrow())
-            .and_then(|v| v.data.iter().choose(&mut rand::rng()).cloned())
+        let Value { data, .. } = map.get(key.borrow())?;
+        if data.is_empty() {
+            return None;
+        }
+        let lengths = data.len();
+        let index = rand::rng().random_range(0..lengths);
+        Some(data[index].clone())
     }
 
     #[allow(dead_code)]
-    pub async fn insert(&self, key: impl Into<String>, value: impl Into<Arc<[Url]>>) {
+    pub async fn insert(&self, key: impl Into<String>, value: impl Into<Box<[Url]>>) {
         self.insert_with_duration(key, value, consts::SHORT_CACHE_LIFETIME)
             .await;
     }
@@ -60,7 +59,7 @@ impl GifCache {
     pub async fn insert_with_duration(
         &self,
         key: impl Into<String>,
-        value: impl Into<Arc<[Url]>>,
+        value: impl Into<Box<[Url]>>,
         duration: Duration,
     ) {
         let fresh_until = Instant::now() + duration;
@@ -70,7 +69,7 @@ impl GifCache {
     pub async fn insert_with_freshness(
         &self,
         key: impl Into<String>,
-        value: impl Into<Arc<[Url]>>,
+        value: impl Into<Box<[Url]>>,
         fresh_until: Instant,
     ) {
         let mut map = self.map.write().await;

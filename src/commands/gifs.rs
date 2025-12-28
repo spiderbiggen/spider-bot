@@ -5,11 +5,9 @@ use crate::commands::CommandError;
 use crate::consts::{LONG_CACHE_LIFETIME, SHORT_CACHE_LIFETIME};
 use crate::context::{Context, GifCacheExt, GifContextExt};
 use poise::serenity_prelude as serenity;
-use rand::prelude::*;
 use serenity::all::MessageFlags;
 use serenity::{CreateMessage, Mentionable, User};
-use std::borrow::Cow;
-use std::sync::Arc;
+use std::borrow::{Borrow, Cow};
 use std::time::Duration;
 use tenor::models::{Gif, MediaFilter};
 use tracing::{error, info, instrument};
@@ -31,22 +29,6 @@ pub(crate) enum GifError {
     NoGifs,
 }
 
-trait GifSliceExt {
-    fn take(&self) -> Result<Url, GifError>;
-}
-
-impl<T> GifSliceExt for T
-where
-    T: AsRef<[Url]>,
-{
-    fn take(&self) -> Result<Url, GifError> {
-        self.as_ref()
-            .choose(&mut rand::rng())
-            .cloned()
-            .ok_or(GifError::NoGifs)
-    }
-}
-
 fn play_autocomplete(_: Context<'_, '_>, partial: &str) -> impl Future<Output = Vec<&'static str>> {
     futures::future::ready(play::autocomplete(partial))
 }
@@ -62,7 +44,7 @@ pub(crate) async fn play(
     game: Option<String>,
 ) -> Result<(), CommandError> {
     let mention = mention_or_here(user.as_ref());
-    let output = play::get_command_output(&ctx, &mention, game).await?;
+    let output = play::get_command_output(&ctx, mention.as_ref(), game).await?;
     ctx.reply(output.message).await?;
     send_gif_message(ctx, output.gif).await?;
     Ok(())
@@ -146,12 +128,16 @@ async fn get_cached_gif(context: &impl GifContextExt<'_>, query: &str) -> Result
 
 async fn update_cached_gifs(
     context: &impl GifContextExt<'_>,
-    query: impl Into<Cow<'static, str>>,
+    query: &str,
     config: Option<tenor::Config<'_>>,
-) -> Result<Arc<[Url]>, GifError> {
-    let query = query.into();
-    let gifs = context.tenor().search(&query, config).await?;
-    Ok(cache_gifs(context, query, gifs, SHORT_CACHE_LIFETIME).await)
+) -> Result<bool, GifError> {
+    let gifs = context.tenor().search(query, config).await?;
+    if gifs.is_empty() {
+        tracing::warn!("No gifs found for query \"{query}\", skipping cache update");
+        return Ok(false);
+    }
+    cache_gifs(context, query, gifs, SHORT_CACHE_LIFETIME).await;
+    Ok(true)
 }
 
 fn map_gif_to_url(mut gif: Gif) -> Url {
@@ -162,16 +148,15 @@ fn map_gif_to_url(mut gif: Gif) -> Url {
 
 async fn cache_gifs(
     context: &impl GifCacheExt,
-    key: impl Into<Cow<'static, str>>,
+    key: impl Borrow<str>,
     gifs: impl IntoIterator<Item = Gif>,
     duration: Duration,
-) -> Arc<[Url]> {
-    let key = key.into();
-    let urls: Arc<[Url]> = gifs.into_iter().map(map_gif_to_url).collect();
+) {
+    let key = key.borrow();
+    let urls: Box<[Url]> = gifs.into_iter().map(map_gif_to_url).collect();
     info!(gif_count = urls.len(), r#"Putting "{key}" gifs into cache"#);
     context
         .gif_cache()
-        .insert_with_duration(key, urls.clone(), duration)
+        .insert_with_duration(key, urls, duration)
         .await;
-    urls
 }

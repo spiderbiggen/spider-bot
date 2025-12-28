@@ -7,7 +7,6 @@ use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use rand::Rng;
 use std::collections::HashSet;
-use std::sync::Arc;
 use tenor::Config;
 use tracing::{debug, error, info, instrument, warn};
 use url::Url;
@@ -120,7 +119,11 @@ async fn update_sleep_resolver_cache(
         gif_collection.extend(gifs.into_iter().map(|gif| gif.url));
     }
     let name = resolver.name;
-    let urls: Arc<[Url]> = gif_collection.into_iter().collect();
+    let urls: Box<[Url]> = gif_collection.into_iter().collect();
+    if urls.is_empty() {
+        warn!("No gifs found for resolver \"{name}\", skipping cache update");
+        return Ok(());
+    }
     let gif_count = urls.len();
     info!(gif_count, "Putting \"{name}\" gifs into cache");
     gif_cache
