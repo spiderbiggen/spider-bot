@@ -14,7 +14,7 @@ use tenor::Client as Tenor;
 use tokio::sync::mpsc::{Receiver, channel};
 use tokio::task::JoinSet;
 use tokio::time::{Instant, Interval, interval_at};
-use tracing::{error, info, instrument};
+use tracing::instrument;
 
 use db::BotDatabase;
 use domain::{Download, DownloadCollection, Subscribed, Subscriber};
@@ -102,7 +102,7 @@ impl DiscordApi {
             .fields(download_fields(message.content.downloads));
 
         let channel_ids = channel_ids(&message.subscribers);
-        info!("Notifying {} channels", channel_ids.len());
+        tracing::info!("Notifying {} channels", channel_ids.len());
         let set: JoinSet<()> = channel_ids
             .map(|channel_id| self.send_embed(channel_id, embed.clone()))
             .collect();
@@ -118,7 +118,7 @@ impl DiscordApi {
         let cache = Arc::clone(&self.1);
         async move {
             if let Err(err) = channel_id.send_embed(http, embed).await {
-                error!(
+                tracing::error!(
                     channel_id = channel_id.format(&cache),
                     "Failed to send embed, {err}",
                 );

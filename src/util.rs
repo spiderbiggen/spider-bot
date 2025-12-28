@@ -2,7 +2,6 @@ use chrono::{Datelike, TimeDelta};
 use chrono::{Month, NaiveDate};
 use std::cmp::Ordering;
 use std::num::{NonZero, NonZeroU8};
-use tracing::warn;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DayOfMonth(NonZeroU8, Month);
@@ -88,7 +87,7 @@ impl DateRange {
     pub fn expand_start(mut self, date: NaiveDate) -> DateRange {
         let start = self.start.adjust_for_leap_year(date.leap_year());
         let Some(mut start_date) = start.to_naive_date(date.year()) else {
-            warn!("Failed to transform start date: {:?}", self.start);
+            tracing::warn!("Failed to transform start date: {:?}", self.start);
             return self;
         };
         start_date -= TimeDelta::days(1);

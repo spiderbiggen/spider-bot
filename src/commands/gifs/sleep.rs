@@ -8,7 +8,7 @@ use chrono::{Month, NaiveDate};
 use rand::Rng;
 use std::collections::HashSet;
 use tenor::Config;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::instrument;
 use url::Url;
 
 const SLEEP_GIF_CONFIG: Config = super::RANDOM_CONFIG;
@@ -29,12 +29,12 @@ pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
             continue;
         }
         if let Err(error) = update_sleep_resolver_cache(context, resolver).await {
-            error!("Error caching gifs for {}: {error}", resolver.name);
+            tracing::error!("Error caching gifs for {}: {error}", resolver.name);
         }
     }
     let resolver = &SLEEP_GIF_COLLECTION.default;
     if let Err(error) = update_sleep_resolver_cache(context, resolver).await {
-        error!("Error caching gifs for {}: {error}", resolver.name);
+        tracing::error!("Error caching gifs for {}: {error}", resolver.name);
     }
 }
 
@@ -74,7 +74,7 @@ impl<'gifs> GifCollection<'gifs> {
         match season {
             None => &self.default,
             Some(season) => {
-                debug!("found seasonal {}", season.resolver.name);
+                tracing::debug!("found seasonal {}", season.resolver.name);
                 &season.resolver
             }
         }
@@ -85,10 +85,10 @@ impl GifResolver<'_> {
     #[instrument(skip_all, err)]
     async fn get_gif(&self, gif_cache: &GifCache) -> Result<Url, GifError> {
         if let Some(query) = self.get_override() {
-            debug!("Found gif override");
+            tracing::debug!("Found gif override");
             match query.parse() {
                 Ok(url) => return Ok(url),
-                Err(error) => warn!("Error parsing gif override: {error}"),
+                Err(error) => tracing::warn!("Error parsing gif override: {error}"),
             }
         }
         let gif = gif_cache
@@ -120,15 +120,13 @@ async fn update_sleep_resolver_cache(
     }
     let name = resolver.name;
     let urls: Box<[Url]> = gif_collection.into_iter().collect();
-    if urls.is_empty() {
-        warn!("No gifs found for resolver \"{name}\", skipping cache update");
-        return Ok(());
-    }
     let gif_count = urls.len();
-    info!(gif_count, "Putting \"{name}\" gifs into cache");
-    gif_cache
+    let updated = gif_cache
         .insert_with_duration(name, urls, LONG_CACHE_LIFETIME)
         .await;
+    if updated {
+        tracing::info!(gif_count, "Put \"{name}\" gifs into cache");
+    }
     Ok(())
 }
 

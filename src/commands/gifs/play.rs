@@ -5,7 +5,6 @@ use crate::context::GifContextExt;
 use rustrict::CensorStr;
 use std::borrow::Cow;
 use tenor::Config;
-use tracing::error;
 use url::Url;
 
 const FALLBACK_CONFIG: Config = super::RANDOM_CONFIG;
@@ -126,14 +125,14 @@ pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
             Ok(gifs) => {
                 cache_gifs(context, query, gifs, LONG_CACHE_LIFETIME).await;
             }
-            Err(error) => error!("Error caching gifs for {query}: {error}"),
+            Err(error) => tracing::error!("Error caching gifs for {query}: {error}"),
         }
     }
     match tenor.search(PLAY_FALLBACK, Some(FALLBACK_CONFIG)).await {
         Ok(gifs) => {
             cache_gifs(context, PLAY_FALLBACK, gifs, LONG_CACHE_LIFETIME).await;
         }
-        Err(error) => error!("Error caching gifs for {PLAY_FALLBACK}: {error}"),
+        Err(error) => tracing::error!("Error caching gifs for {PLAY_FALLBACK}: {error}"),
     }
 }
 

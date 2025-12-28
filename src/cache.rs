@@ -5,6 +5,7 @@ use std::borrow::Borrow;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
+use tracing::instrument;
 use url::Url;
 
 #[derive(Debug, Clone)]
@@ -51,9 +52,9 @@ impl GifCache {
     }
 
     #[allow(dead_code)]
-    pub async fn insert(&self, key: impl Into<String>, value: impl Into<Box<[Url]>>) {
+    pub async fn insert(&self, key: impl Into<String>, value: impl Into<Box<[Url]>>) -> bool {
         self.insert_with_duration(key, value, consts::SHORT_CACHE_LIFETIME)
-            .await;
+            .await
     }
 
     pub async fn insert_with_duration(
@@ -61,25 +62,30 @@ impl GifCache {
         key: impl Into<String>,
         value: impl Into<Box<[Url]>>,
         duration: Duration,
-    ) {
+    ) -> bool {
         let fresh_until = Instant::now() + duration;
-        self.insert_with_freshness(key, value, fresh_until).await;
+        self.insert_with_freshness(key, value, fresh_until).await
     }
 
+    #[instrument(skip_all, fields(key))]
     pub async fn insert_with_freshness(
         &self,
         key: impl Into<String>,
         value: impl Into<Box<[Url]>>,
         fresh_until: Instant,
-    ) {
+    ) -> bool {
+        let key = key.into();
+        let data = value.into();
+        if data.is_empty() {
+            tracing::Span::current().record("key", &key);
+            tracing::warn!("Tried to insert empty gif collection");
+            return false;
+        }
+
+        tracing::Span::current().record("key", &key);
         let mut map = self.map.write().await;
-        map.insert(
-            key.into(),
-            Value {
-                fresh_until,
-                data: value.into(),
-            },
-        );
+        map.insert(key, Value { fresh_until, data });
+        true
     }
 
     pub async fn trim(&self) {
