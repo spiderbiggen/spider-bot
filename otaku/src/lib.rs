@@ -5,7 +5,7 @@ use std::cmp::min;
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use tonic::codec::CompressionEncoding;
-use tracing::{debug, error, info, instrument};
+use tracing::instrument;
 
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 const BACKOFF_INTERVAL: Duration = Duration::from_millis(125);
@@ -21,8 +21,8 @@ pub async fn subscribe(
         let result = handle_stream(client, &db, &sender).await;
 
         match result {
-            Ok(()) => error!("Anime subscription dropped"),
-            Err(err) => error!("Anime subscription dropped: {err}"),
+            Ok(()) => tracing::error!("Anime subscription dropped"),
+            Err(err) => tracing::error!("Anime subscription dropped: {err}"),
         }
 
         tokio::time::sleep(RECONNECT_INTERVAL).await;
@@ -38,7 +38,7 @@ async fn connect_with_backoff(
         match DownloadsClient::connect(endpoint).await {
             Ok(client) => return client.accept_compressed(CompressionEncoding::Gzip),
             Err(err) => {
-                error!(
+                tracing::error!(
                     "Failed to connect to {endpoint} with error: {err}. Retrying in {:.2} seconds",
                     backoff.as_secs_f32()
                 );
@@ -55,7 +55,7 @@ async fn handle_stream(
     sender: &Sender<Subscribed<DownloadCollection>>,
 ) -> Result<(), tonic::Status> {
     let mut stream = client.subscribe(()).await?.into_inner();
-    info!("Connected to grpc service");
+    tracing::info!("Connected to grpc service");
 
     while let Some(message) = stream.message().await? {
         process_message(db, sender, message).await;
@@ -69,7 +69,7 @@ async fn process_message(
     sender: &Sender<Subscribed<DownloadCollection>>,
     incoming_message: proto::api::v2::DownloadCollection,
 ) {
-    debug!("Got message: {incoming_message:?}");
+    tracing::debug!("Got message: {incoming_message:?}");
 
     // Filter incomplete messages
     if !incoming_message
@@ -77,14 +77,14 @@ async fn process_message(
         .iter()
         .any(|download| download.resolution == 1080)
     {
-        debug!("Message was incomplete, skipping");
+        tracing::debug!("Message was incomplete, skipping");
         return;
     }
 
     let collection: DownloadCollection = match incoming_message.try_into() {
         Ok(collection) => collection,
         Err(err) => {
-            error!("Failed to convert an incoming message to DownloadCollection: {err}");
+            tracing::error!("Failed to convert an incoming message to DownloadCollection: {err}");
             return;
         }
     };
@@ -98,6 +98,6 @@ async fn process_message(
         subscribers,
     };
     if let Err(err) = sender.send(outbound_message).await {
-        error!("Failed to forward an incoming message: {err}");
+        tracing::error!("Failed to forward an incoming message: {err}");
     }
 }

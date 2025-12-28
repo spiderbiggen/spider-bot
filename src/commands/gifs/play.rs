@@ -1,11 +1,11 @@
-use super::{GifSliceExt, cache_gifs, update_cached_gifs};
+use super::{cache_gifs, update_cached_gifs};
 use crate::commands::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS, get_cached_gif};
 use crate::consts::LONG_CACHE_LIFETIME;
 use crate::context::GifContextExt;
 use rustrict::CensorStr;
 use std::borrow::Cow;
 use tenor::Config;
-use tracing::error;
+use url::Url;
 
 const FALLBACK_CONFIG: Config = super::RANDOM_CONFIG;
 static PLAY_FALLBACK: &str = "games";
@@ -75,7 +75,7 @@ static GAME_AUTOCOMPLETION: &[GameQuery] = &[
 
 pub struct CommandOutput {
     pub message: String,
-    pub gif: String,
+    pub gif: Url,
 }
 
 pub fn autocomplete(partial: &str) -> Vec<&'static str> {
@@ -100,8 +100,11 @@ pub async fn get_command_output(
             match get_cached_gif(context, &query).await {
                 Ok(gif) => gif,
                 Err(GifError::NoGifs) => {
-                    let gifs = update_cached_gifs(context, query.clone(), None).await?;
-                    gifs.take()?
+                    if update_cached_gifs(context, &query, None).await? {
+                        get_cached_gif(context, &query).await?
+                    } else {
+                        Err(GifError::NoGifs)?
+                    }
                 }
                 Err(err) => Err(err)?,
             }
@@ -117,19 +120,19 @@ pub async fn get_command_output(
 
 pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
     let tenor = context.tenor();
-    for GameQuery { query, .. } in GAME_AUTOCOMPLETION {
+    for &GameQuery { query, .. } in GAME_AUTOCOMPLETION {
         match tenor.search(query, None).await {
             Ok(gifs) => {
-                cache_gifs(context, *query, gifs, LONG_CACHE_LIFETIME).await;
+                cache_gifs(context, query, gifs, LONG_CACHE_LIFETIME).await;
             }
-            Err(error) => error!("Error caching gifs for {query}: {error}"),
+            Err(error) => tracing::error!("Error caching gifs for {query}: {error}"),
         }
     }
     match tenor.search(PLAY_FALLBACK, Some(FALLBACK_CONFIG)).await {
         Ok(gifs) => {
             cache_gifs(context, PLAY_FALLBACK, gifs, LONG_CACHE_LIFETIME).await;
         }
-        Err(error) => error!("Error caching gifs for {PLAY_FALLBACK}: {error}"),
+        Err(error) => tracing::error!("Error caching gifs for {PLAY_FALLBACK}: {error}"),
     }
 }
 
