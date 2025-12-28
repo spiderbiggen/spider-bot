@@ -290,8 +290,8 @@ impl UserBalanceTransaction for BotDatabase {
         get_user_balance(&mut *transaction, guild_id, to)
             .await?
             .ok_or(BalanceTransactionError::RecipientUninitialized)?;
-        let new_from_balance = add_user_balance(&**self, guild_id, from, -value).await?;
-        let new_to_balance = add_user_balance(&**self, guild_id, to, value).await?;
+        let new_from_balance = add_user_balance(&mut *transaction, guild_id, from, -value).await?;
+        let new_to_balance = add_user_balance(&mut *transaction, guild_id, to, value).await?;
         transaction.commit().await?;
         Ok((new_from_balance, new_to_balance))
     }
