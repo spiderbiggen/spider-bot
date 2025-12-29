@@ -1,0 +1,24 @@
+[package]
+name = "igdb"
+version = "0.1.0"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true, features = ["serde"] }
+governor = "0.10.4"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "brotli"] }
+rustc-hash = "2.1.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = { workspace = true }
+tokio = { version = "1" }
+url = { workspace = true, features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+dotenv = "0.15.0"
+tokio = { version = "1", features = ["test-util", "macros"] }
+
