@@ -19,17 +19,22 @@ struct GameQuery {
 static GAME_AUTOCOMPLETION: &[GameQuery] = &[
     GameQuery {
         name: "Apex Legends",
-        query: "apex_legends",
+        query: "apex legends",
         matches: &["apex legends"],
     },
     GameQuery {
+        name: "Battlefield",
+        query: "battlefield",
+        matches: &["battlefield"],
+    },
+    GameQuery {
         name: "Call of Duty",
-        query: "call_of_duty",
+        query: "call of duty",
         matches: &["warzone", "cod", "call of duty"],
     },
     GameQuery {
         name: "Chivalry 2",
-        query: "chivalry_2",
+        query: "chivalry 2",
         matches: &["chivalry 2"],
     },
     GameQuery {
@@ -39,12 +44,12 @@ static GAME_AUTOCOMPLETION: &[GameQuery] = &[
     },
     GameQuery {
         name: "League of Legends",
-        query: "league_of_legends",
+        query: "league of legends",
         matches: &["lol", "league of legends"],
     },
     GameQuery {
         name: "Lethal Company",
-        query: "lethal_company",
+        query: "lethal company",
         matches: &["lethal company"],
     },
     GameQuery {
@@ -64,7 +69,7 @@ static GAME_AUTOCOMPLETION: &[GameQuery] = &[
     },
     GameQuery {
         name: "Sid Meier's Civilization VII",
-        query: "civilization",
+        query: "sid meier's civilization",
         matches: &[
             "civilization",
             "sid meier's civilization vii",
