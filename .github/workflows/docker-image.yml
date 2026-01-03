@@ -37,6 +37,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6.0.1
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Install Musl toolchain
         run: |
           sudo apt update
