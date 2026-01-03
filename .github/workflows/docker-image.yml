@@ -37,6 +37,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6.0.1
 
+      - name: Install Musl toolchain
+        run: |
+          sudo apt update
+          sudo apt install -y musl-tools musl-dev
+
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
