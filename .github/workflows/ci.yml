@@ -17,7 +17,6 @@ jobs:
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2.8.2
@@ -28,28 +27,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Build tests
-        uses: ClementTsang/cargo-action@v0.0.7
-        with:
-          command: test
-          use-cross: true
-          args: --no-run --locked
-        env:
-          RUST_BACKTRACE: full
+        run: cargo test --no-run --locked
 
       - name: Run tests
-        uses: ClementTsang/cargo-action@v0.0.7
-        with:
-          command: test
-          use-cross: true
-          args: --no-fail-fast
-        env:
-          RUST_BACKTRACE: full
+        run: cargo test --no-fail-fast
 
       - name: Run clippy
-        uses: ClementTsang/cargo-action@v0.0.7
-        with:
-          command: clippy
-          use-cross: true
-          args: --all-targets --workspace -- -D warnings
-        env:
-          RUST_BACKTRACE: full
+        run: cargo clippy --all-targets --workspace -- -D warnings
