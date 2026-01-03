@@ -39,6 +39,8 @@ jobs:
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.info.target }}
 
       - name: Cargo Build
         run: cargo build --all-targets --target=${{ matrix.info.target }} --locked --release
