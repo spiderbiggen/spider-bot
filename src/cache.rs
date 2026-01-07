@@ -69,7 +69,7 @@ impl GifCache {
         self.insert_with_freshness(key, value, fresh_until)
     }
 
-    #[instrument(skip_all, fields(key))]
+    #[instrument(skip_all)]
     pub fn insert_with_freshness(
         &self,
         key: impl Into<String>,

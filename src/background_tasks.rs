@@ -41,7 +41,7 @@ pub(crate) fn start_gif_updater(tenor: Tenor<'static>, gif_cache: GifCache) -> a
     tokio::spawn(async move {
         loop {
             interval.tick().await;
-            gifs::update_global_gif_cache(&context).await;
+            gifs::refresh_global_gif_cache(&context).await;
         }
     });
     Ok(())

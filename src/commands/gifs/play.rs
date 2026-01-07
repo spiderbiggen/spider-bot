@@ -136,7 +136,8 @@ async fn get_game_gif(
     }
 }
 
-pub async fn refresh_gif_cache(tenor: &Tenor<'_>, gif_cache: &GifCache) {
+#[tracing::instrument(skip_all)]
+pub async fn refresh_play_gifs(tenor: &Tenor<'_>, gif_cache: &GifCache) {
     refresh_gif_cache_for_query(tenor, gif_cache, PLAY_FALLBACK, Some(FALLBACK_CONFIG)).await;
 
     // TODO cache n most popular games

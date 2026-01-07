@@ -9,7 +9,7 @@ use crate::context::{Context, GifCacheExt, GifContextExt};
 use poise::serenity_prelude as serenity;
 use serenity::all::MessageFlags;
 use serenity::{CreateMessage, Mentionable, User};
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 use tenor::models::{Gif, MediaFilter};
@@ -97,11 +97,11 @@ async fn send_gif_message(
 }
 
 #[instrument(skip_all)]
-pub(crate) async fn update_global_gif_cache(context: &impl GifContextExt<'_>) {
+pub(crate) async fn refresh_global_gif_cache(context: &impl GifContextExt<'_>) {
     let (tenor, gif_cache) = context.gif_context();
+    sleep::refresh_sleep_gifs(tenor, gif_cache).await;
+    play::refresh_play_gifs(tenor, gif_cache).await;
     refresh_gif_cache(tenor, gif_cache).await;
-    play::refresh_gif_cache(tenor, gif_cache).await;
-    sleep::refresh_gif_cache(tenor, gif_cache).await;
 }
 
 async fn refresh_gif_cache(tenor: &Tenor<'_>, gif_cache: &GifCache) {
@@ -117,11 +117,13 @@ async fn refresh_gif_cache_for_query(
 ) -> bool {
     match tenor.search(query, cfg).await {
         Ok(gifs) => {
-            cache_gifs(gif_cache, query, gifs, LONG_CACHE_LIFETIME);
+            let urls: Box<[Arc<Url>]> =
+                gifs.into_iter().map(map_gif_to_url).map(Arc::new).collect();
+            cache_gifs(gif_cache, query, urls, LONG_CACHE_LIFETIME);
             true
         }
         Err(error) => {
-            tracing::error!("Error fetching gifs for {query}: {error}");
+            tracing::error!(query, "Error fetching gifs for: {error}");
             false
         }
     }
@@ -144,19 +146,11 @@ fn map_gif_to_url(mut gif: Gif) -> Url {
         .map_or(gif.url, |s| s.url)
 }
 
-fn cache_gifs(
-    cache: &GifCache,
-    key: impl Borrow<str>,
-    gifs: impl IntoIterator<Item = Gif>,
-    duration: Duration,
-) -> bool {
-    let key = key.borrow();
-    let urls: Box<[Arc<Url>]> = gifs.into_iter().map(map_gif_to_url).map(Arc::new).collect();
-    let gif_count = urls.len();
-
-    let updated = cache.insert_with_duration(key, urls, duration);
+#[tracing::instrument(skip(cache, gifs), fields(gifs.len = gifs.len()))]
+fn cache_gifs(cache: &GifCache, key: &str, gifs: Box<[Arc<Url>]>, duration: Duration) -> bool {
+    let updated = cache.insert_with_duration(key, gifs, duration);
     if updated {
-        tracing::info!(gif_count, r#"Putting "{key}" gifs into cache"#);
+        tracing::info!("Updated cache");
     }
     updated
 }

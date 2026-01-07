@@ -20,7 +20,8 @@ pub async fn get_gif(gif_cache: &GifCache) -> Result<Arc<Url>, GifError> {
     SLEEP_GIF_COLLECTION.current(date).get_gif(gif_cache).await
 }
 
-pub async fn refresh_gif_cache(tenor: &Tenor<'_>, gif_cache: &GifCache) {
+#[tracing::instrument(skip_all)]
+pub async fn refresh_sleep_gifs(tenor: &Tenor<'_>, gif_cache: &GifCache) {
     let date = Utc::now().date_naive();
     for Season { resolver, range } in SLEEP_GIF_COLLECTION.seasons {
         if !range.should_cache(date) {
