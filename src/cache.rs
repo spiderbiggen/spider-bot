@@ -1,22 +1,22 @@
 use crate::consts;
+use dashmap::DashMap;
 use rand::Rng;
-use rustc_hash::FxHashMap;
+use rustc_hash::FxBuildHasher;
 use std::borrow::Borrow;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
 use tracing::instrument;
 use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct Value {
     fresh_until: Instant,
-    data: Box<[Url]>,
+    data: Box<[Arc<Url>]>,
 }
 
 #[derive(Debug)]
 pub struct GifCache {
-    map: Arc<RwLock<FxHashMap<String, Value>>>,
+    map: Arc<DashMap<String, Value, FxBuildHasher>>,
 }
 
 impl Clone for GifCache {
@@ -30,7 +30,7 @@ impl Clone for GifCache {
 impl Default for GifCache {
     fn default() -> Self {
         Self {
-            map: Arc::new(RwLock::new(FxHashMap::default())),
+            map: Arc::new(DashMap::with_hasher(FxBuildHasher)),
         }
     }
 }
@@ -40,65 +40,70 @@ impl GifCache {
         Self::default()
     }
 
-    pub async fn get_random(&self, key: impl Borrow<str>) -> Option<Url> {
-        let map = self.map.read().await;
-        let Value { data, .. } = map.get(key.borrow())?;
-        if data.is_empty() {
-            return None;
-        }
-        let lengths = data.len();
-        let index = rand::rng().random_range(0..lengths);
-        Some(data[index].clone())
+    pub fn get_random(&self, key: impl Borrow<str>) -> Option<Arc<Url>> {
+        self.map
+            .view(key.borrow(), |_, v| {
+                let data = &v.data;
+                if data.is_empty() {
+                    return None;
+                }
+                let lengths = data.len();
+                let index = rand::rng().random_range(0..lengths);
+                Some(Arc::clone(&data[index]))
+            })
+            .flatten()
     }
 
     #[allow(dead_code)]
-    pub async fn insert(&self, key: impl Into<String>, value: impl Into<Box<[Url]>>) -> bool {
+    pub fn insert(&self, key: impl Into<String>, value: Box<[Arc<Url>]>) -> bool {
         self.insert_with_duration(key, value, consts::SHORT_CACHE_LIFETIME)
-            .await
     }
 
-    pub async fn insert_with_duration(
+    pub fn insert_with_duration(
         &self,
         key: impl Into<String>,
-        value: impl Into<Box<[Url]>>,
+        value: Box<[Arc<Url>]>,
         duration: Duration,
     ) -> bool {
         let fresh_until = Instant::now() + duration;
-        self.insert_with_freshness(key, value, fresh_until).await
+        self.insert_with_freshness(key, value, fresh_until)
     }
 
     #[instrument(skip_all, fields(key))]
-    pub async fn insert_with_freshness(
+    pub fn insert_with_freshness(
         &self,
         key: impl Into<String>,
-        value: impl Into<Box<[Url]>>,
+        value: Box<[Arc<Url>]>,
         fresh_until: Instant,
     ) -> bool {
         let key = key.into();
-        let data = value.into();
-        if data.is_empty() {
+        if value.is_empty() {
             tracing::Span::current().record("key", &key);
             tracing::warn!("Tried to insert empty gif collection");
             return false;
         }
 
         tracing::Span::current().record("key", &key);
-        let mut map = self.map.write().await;
-        map.insert(key, Value { fresh_until, data });
+        self.map.insert(
+            key,
+            Value {
+                fresh_until,
+                data: value,
+            },
+        );
         true
     }
 
-    pub async fn trim(&self) {
-        let mut map = self.map.write().await;
-
+    pub fn trim(&self) {
         let now = Instant::now();
-        map.retain(|_, v| v.fresh_until >= now);
+        self.map.retain(|_, v| v.fresh_until >= now);
 
         // Shrink to fit is a relatively expensive operation.
-        // Capacity management: only shrink if we're significantly over-allocated
+        // only shrink if we're significantly over-allocated
         // and have enough elements to justify the cost of reallocation.
-        if map.capacity() > 64 && map.len() * 2 < map.capacity() {
-            map.shrink_to_fit();
+        let (cap, len) = (self.map.capacity(), self.map.len());
+        if cap > 64 && len * 4 < cap {
+            self.map.shrink_to_fit();
         }
     }
 }

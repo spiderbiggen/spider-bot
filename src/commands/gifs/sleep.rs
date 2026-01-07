@@ -1,12 +1,13 @@
-use crate::commands::gifs::GifError;
+use crate::Tenor;
+use crate::commands::gifs::{GifError, get_cached_gif};
 use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
-use crate::context::{GifCacheExt, GifContextExt};
 use crate::util::{DateRange, DayOfMonth};
 use crate::{GifCache, day_of_month};
 use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use rand::Rng;
-use std::collections::HashSet;
+use rustc_hash::{FxBuildHasher, FxHashSet};
+use std::sync::Arc;
 use tenor::Config;
 use tracing::instrument;
 use url::Url;
@@ -14,26 +15,23 @@ use url::Url;
 const SLEEP_GIF_CONFIG: Config = super::RANDOM_CONFIG;
 
 #[instrument(skip_all, err)]
-pub async fn get_gif(context: &impl GifCacheExt) -> Result<Url, GifError> {
+pub async fn get_gif(gif_cache: &GifCache) -> Result<Arc<Url>, GifError> {
     let date = Utc::now().date_naive();
-    SLEEP_GIF_COLLECTION
-        .current(date)
-        .get_gif(context.gif_cache())
-        .await
+    SLEEP_GIF_COLLECTION.current(date).get_gif(gif_cache).await
 }
 
-pub async fn update_gif_cache(context: &impl GifContextExt<'_>) {
+pub async fn refresh_gif_cache(tenor: &Tenor<'_>, gif_cache: &GifCache) {
     let date = Utc::now().date_naive();
     for Season { resolver, range } in SLEEP_GIF_COLLECTION.seasons {
         if !range.should_cache(date) {
             continue;
         }
-        if let Err(error) = update_sleep_resolver_cache(context, resolver).await {
+        if let Err(error) = refresh_gif_cache_for_resolver(tenor, gif_cache, resolver).await {
             tracing::error!("Error caching gifs for {}: {error}", resolver.name);
         }
     }
     let resolver = &SLEEP_GIF_COLLECTION.default;
-    if let Err(error) = update_sleep_resolver_cache(context, resolver).await {
+    if let Err(error) = refresh_gif_cache_for_resolver(tenor, gif_cache, resolver).await {
         tracing::error!("Error caching gifs for {}: {error}", resolver.name);
     }
 }
@@ -83,19 +81,15 @@ impl<'gifs> GifCollection<'gifs> {
 
 impl GifResolver<'_> {
     #[instrument(skip_all, err)]
-    async fn get_gif(&self, gif_cache: &GifCache) -> Result<Url, GifError> {
+    async fn get_gif(&self, gif_cache: &GifCache) -> Result<Arc<Url>, GifError> {
         if let Some(query) = self.get_override() {
             tracing::debug!("Found gif override");
             match query.parse() {
-                Ok(url) => return Ok(url),
+                Ok(url) => return Ok(Arc::new(url)),
                 Err(error) => tracing::warn!("Error parsing gif override: {error}"),
             }
         }
-        let gif = gif_cache
-            .get_random(self.name)
-            .await
-            .ok_or(GifError::NoGifs)?;
-        Ok(gif)
+        get_cached_gif(gif_cache, self.name)
     }
 
     #[must_use]
@@ -107,24 +101,23 @@ impl GifResolver<'_> {
     }
 }
 
-async fn update_sleep_resolver_cache(
-    context: &impl GifContextExt<'_>,
+async fn refresh_gif_cache_for_resolver(
+    tenor: &Tenor<'_>,
+    gif_cache: &GifCache,
     resolver: &GifResolver<'_>,
 ) -> Result<(), GifError> {
     let max_capacity = resolver.queries.len() * usize::from(GIF_COUNT);
-    let mut gif_collection: HashSet<Url> = HashSet::with_capacity(max_capacity);
-    let (tenor, gif_cache) = context.gif_context();
+    let mut gif_collection: FxHashSet<Url> =
+        FxHashSet::with_capacity_and_hasher(max_capacity, FxBuildHasher);
+
     for &query in resolver.queries {
         let gifs = tenor.search(query, Some(SLEEP_GIF_CONFIG)).await?;
         gif_collection.extend(gifs.into_iter().map(|gif| gif.url));
     }
     let name = resolver.name;
-    let urls: Box<[Url]> = gif_collection.into_iter().collect();
+    let urls: Box<[Arc<Url>]> = gif_collection.into_iter().map(Arc::new).collect();
     let gif_count = urls.len();
-    let updated = gif_cache
-        .insert_with_duration(name, urls, LONG_CACHE_LIFETIME)
-        .await;
-    if updated {
+    if gif_cache.insert_with_duration(name, urls, LONG_CACHE_LIFETIME) {
         tracing::info!(gif_count, "Put \"{name}\" gifs into cache");
     }
     Ok(())

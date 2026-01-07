@@ -36,6 +36,7 @@ tenor = { path = "tenor" }
 anyhow = "1.0.86"
 chrono = { workspace = true }
 dotenv = "0.15.0"
+dashmap = "6.1.0"
 envmnt = "0.10.4"
 futures = "0.3.21"
 poise = "0.6.1"
