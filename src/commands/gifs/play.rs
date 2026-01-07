@@ -86,12 +86,14 @@ pub struct CommandOutput {
     pub gif: Arc<Url>,
 }
 
-pub fn autocomplete(partial: &str) -> Vec<&'static str> {
+// TODO improve autocomplete by checking another service instead of a static list
+#[expect(clippy::unused_async)]
+pub async fn autocomplete(_: Context<'_, '_>, partial: &str) -> Vec<Cow<'static, str>> {
     let lower_partial = &partial.to_lowercase();
     GAME_AUTOCOMPLETION
         .iter()
         .filter(|GameQuery { matches, .. }| matches.iter().any(|s| s.starts_with(lower_partial)))
-        .map(|&GameQuery { name, .. }| name)
+        .map(|&GameQuery { name, .. }| Cow::Borrowed(name))
         .take(MAX_AUTOCOMPLETE_RESULTS)
         .collect()
 }

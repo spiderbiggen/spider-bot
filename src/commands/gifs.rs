@@ -32,8 +32,8 @@ pub(crate) enum GifError {
     NoGifs,
 }
 
-fn play_autocomplete(_: Context<'_, '_>, partial: &str) -> impl Future<Output = Vec<&'static str>> {
-    futures::future::ready(play::autocomplete(partial))
+async fn play_autocomplete(ctx: Context<'_, '_>, partial: &str) -> Vec<Cow<'static, str>> {
+    play::autocomplete(ctx, partial).await
 }
 
 #[instrument(skip_all)]
