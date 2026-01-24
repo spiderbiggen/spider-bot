@@ -1,3 +1,4 @@
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [package]
 name = "spider-bot"
 version = "0.3.8"
@@ -15,7 +16,6 @@ missing_panics_doc = "allow"
 missing_errors_doc = "allow"
 module_name_repetitions = "allow"
 single_match_else = "allow"
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lints]
 workspace = true
