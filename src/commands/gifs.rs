@@ -1,23 +1,22 @@
 mod play;
 mod sleep;
 
-use crate::Tenor;
 use crate::cache::GifCache;
 use crate::commands::CommandError;
 use crate::consts::LONG_CACHE_LIFETIME;
 use crate::context::{Context, GifCacheExt, GifContextExt};
+use klipy::models::Format;
+use klipy::{Config, Klipy};
 use poise::serenity_prelude as serenity;
 use serenity::all::MessageFlags;
 use serenity::{CreateMessage, Mentionable, User};
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
-use tenor::models::{Gif, MediaFilter};
 use tracing::instrument;
 use url::Url;
 
 const MAX_AUTOCOMPLETE_RESULTS: usize = 25;
-const RANDOM_CONFIG: tenor::Config = tenor::Config::new().random(true);
 
 const HURRY_QUERY: &str = "hurry up";
 const MORBIN_QUERY: &str = "morbin_time";
@@ -25,7 +24,7 @@ const MORBIN_QUERY: &str = "morbin_time";
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum GifError {
     #[error(transparent)]
-    Tenor(#[from] tenor::error::Error),
+    Klipy(#[from] klipy::error::Error),
     #[error("The query \"{0}\" was not allowed")]
     RestrictedQuery(String),
     #[error("no gifs found")]
@@ -98,27 +97,30 @@ async fn send_gif_message(
 
 #[instrument(skip_all)]
 pub(crate) async fn refresh_global_gif_cache(context: &impl GifContextExt<'_>) {
-    let (tenor, gif_cache) = context.gif_context();
-    sleep::refresh_sleep_gifs(tenor, gif_cache).await;
-    play::refresh_play_gifs(tenor, gif_cache).await;
-    refresh_gif_cache(tenor, gif_cache).await;
+    let (klipy, gif_cache) = context.gif_context();
+    sleep::refresh_sleep_gifs(klipy, gif_cache).await;
+    play::refresh_play_gifs(klipy, gif_cache).await;
+    refresh_gif_cache(klipy, gif_cache).await;
 }
 
-async fn refresh_gif_cache(tenor: &Tenor<'_>, gif_cache: &GifCache) {
-    refresh_gif_cache_for_query(tenor, gif_cache, HURRY_QUERY, Some(RANDOM_CONFIG)).await;
-    refresh_gif_cache_for_query(tenor, gif_cache, MORBIN_QUERY, None).await;
+async fn refresh_gif_cache(klipy: &Klipy<'_>, gif_cache: &GifCache) {
+    refresh_gif_cache_for_query(klipy, gif_cache, HURRY_QUERY, None).await;
+    refresh_gif_cache_for_query(klipy, gif_cache, MORBIN_QUERY, None).await;
 }
 
 async fn refresh_gif_cache_for_query(
-    tenor: &Tenor<'_>,
+    klipy: &Klipy<'_>,
     gif_cache: &GifCache,
     query: &str,
-    cfg: Option<tenor::Config<'_>>,
+    cfg: Option<Config<'_>>,
 ) -> bool {
-    match tenor.search(query, cfg).await {
+    match klipy.search(query, cfg).await {
         Ok(gifs) => {
-            let urls: Box<[Arc<Url>]> =
-                gifs.into_iter().map(map_gif_to_url).map(Arc::new).collect();
+            let urls: Box<[Arc<Url>]> = gifs
+                .into_iter()
+                .filter_map(|gif| gif.into_media(Format::Webp))
+                .map(Arc::new)
+                .collect();
             cache_gifs(gif_cache, query, urls, LONG_CACHE_LIFETIME);
             true
         }
@@ -138,12 +140,6 @@ fn mention_or_here(user: Option<&User>) -> Cow<'static, str> {
 #[inline]
 fn get_cached_gif(cache: &GifCache, query: &str) -> Result<Arc<Url>, GifError> {
     cache.get_random(query).ok_or(GifError::NoGifs)
-}
-
-fn map_gif_to_url(mut gif: Gif) -> Url {
-    gif.media_formats
-        .remove(&MediaFilter::Gif)
-        .map_or(gif.url, |s| s.url)
 }
 
 #[tracing::instrument(skip(cache, gifs), fields(gifs.len = gifs.len()))]

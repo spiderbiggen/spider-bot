@@ -1,18 +1,16 @@
-use crate::Tenor;
 use crate::commands::gifs::{GifError, get_cached_gif};
 use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
 use crate::util::{DateRange, DayOfMonth};
 use crate::{GifCache, day_of_month};
 use chrono::Utc;
 use chrono::{Month, NaiveDate};
+use klipy::Klipy;
+use klipy::models::Format;
 use rand::Rng;
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use std::sync::Arc;
-use tenor::Config;
 use tracing::instrument;
 use url::Url;
-
-const SLEEP_GIF_CONFIG: Config = super::RANDOM_CONFIG;
 
 #[instrument(skip_all, err)]
 pub async fn get_gif(gif_cache: &GifCache) -> Result<Arc<Url>, GifError> {
@@ -21,19 +19,20 @@ pub async fn get_gif(gif_cache: &GifCache) -> Result<Arc<Url>, GifError> {
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn refresh_sleep_gifs(tenor: &Tenor<'_>, gif_cache: &GifCache) {
+pub async fn refresh_sleep_gifs(klipy: &Klipy<'_>, gif_cache: &GifCache) {
     let date = Utc::now().date_naive();
     for Season { resolver, range } in SLEEP_GIF_COLLECTION.seasons {
         if !range.should_cache(date) {
             continue;
         }
-        if let Err(error) = refresh_gif_cache_for_resolver(tenor, gif_cache, resolver).await {
+        if let Err(error) = refresh_gif_cache_for_resolver(klipy, gif_cache, resolver).await {
             tracing::error!("Error caching gifs for {}: {error}", resolver.name);
         }
     }
     let resolver = &SLEEP_GIF_COLLECTION.default;
-    if let Err(error) = refresh_gif_cache_for_resolver(tenor, gif_cache, resolver).await {
+    if let Err(error) = refresh_gif_cache_for_resolver(klipy, gif_cache, resolver).await {
         tracing::error!("Error caching gifs for {}: {error}", resolver.name);
+        panic!()
     }
 }
 
@@ -103,7 +102,7 @@ impl GifResolver<'_> {
 }
 
 async fn refresh_gif_cache_for_resolver(
-    tenor: &Tenor<'_>,
+    klipy: &Klipy<'_>,
     gif_cache: &GifCache,
     resolver: &GifResolver<'_>,
 ) -> Result<(), GifError> {
@@ -112,8 +111,11 @@ async fn refresh_gif_cache_for_resolver(
         FxHashSet::with_capacity_and_hasher(max_capacity, FxBuildHasher);
 
     for &query in resolver.queries {
-        let gifs = tenor.search(query, Some(SLEEP_GIF_CONFIG)).await?;
-        gif_collection.extend(gifs.into_iter().map(|gif| gif.url));
+        let gifs = klipy.search(query, None).await?;
+        gif_collection.extend(
+            gifs.into_iter()
+                .filter_map(|gif| gif.into_media(Format::Webp)),
+        );
     }
     let name = resolver.name;
     let urls: Box<[Arc<Url>]> = gif_collection.into_iter().map(Arc::new).collect();
@@ -125,7 +127,7 @@ async fn refresh_gif_cache_for_resolver(
 }
 
 const FROGGERS_RATIO_QUERY: RatioQuery = RatioQuery {
-    gif_url: "https://media.tenor.com/nZm2w7ENZ4AAAAAC/frog-dance.gif",
+    gif_url: "https://klipy.com/gifs/sexy-frog",
     numerator: 1,
     denominator: 150,
 };
@@ -147,13 +149,13 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
         ratio_override: Some(FROGGERS_RATIO_QUERY),
         queries: &[
             "sleep",
-            "dog_sleep",
-            "cat_sleep",
-            "rabbit_sleep",
-            "rat_sleep",
-            "duck_sleep",
-            "sheep_sleep",
-            "animal_sleep",
+            "dog Sleep",
+            "cat sleep",
+            "rabbit sleep",
+            "rat sleep",
+            "duck sleep",
+            "sheep sleep",
+            "animal sleep",
         ],
     },
 };
