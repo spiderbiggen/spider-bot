@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
+use klipy::Klipy;
 use serenity::Client as Serenity;
 use serenity::all::{CacheHttp, CreateMessage, Message, UserId};
 use serenity::builder::{Builder, CreateEmbed};
@@ -10,7 +11,6 @@ use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::ChannelId;
-use tenor::Client as Tenor;
 use tokio::sync::mpsc::{Receiver, channel};
 use tokio::task::JoinSet;
 use tokio::time::{Instant, Interval, interval_at};
@@ -35,8 +35,8 @@ fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
     Ok(interval_at(best_effort_start, period))
 }
 
-pub(crate) fn start_gif_updater(tenor: Tenor<'static>, gif_cache: GifCache) -> anyhow::Result<()> {
-    let context = (tenor, gif_cache);
+pub(crate) fn start_gif_updater(klipy: Klipy<'static>, gif_cache: GifCache) -> anyhow::Result<()> {
+    let context = (klipy, gif_cache);
     let mut interval = interval_at_previous_period(Duration::from_secs(6 * 3600))?;
     tokio::spawn(async move {
         loop {

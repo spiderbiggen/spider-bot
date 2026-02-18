@@ -8,4 +8,4 @@ A discord bot for grabbing random gifs and (eventually) updating users on releas
 |---------------|---------|------------------------------|
 | RUST_LOG      | error   | Set log levels for tracing   |
 | DISCORD_TOKEN |         | Discord authentication token |
-| TENOR_TOKEN   |         | Tenor authentication token   |
+| KLIPY_TOKEN   |         | Klipy authentication token   |

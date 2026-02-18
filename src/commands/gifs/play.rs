@@ -1,16 +1,14 @@
 use super::refresh_gif_cache_for_query;
-use crate::Tenor;
 use crate::cache::GifCache;
 use crate::commands::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS, get_cached_gif};
 use crate::context::{Context, GifContextExt};
+use klipy::Klipy;
 use rustrict::CensorStr;
 use std::borrow::Cow;
 use std::fmt::Write;
 use std::sync::Arc;
-use tenor::Config;
 use url::Url;
 
-const FALLBACK_CONFIG: Config = super::RANDOM_CONFIG;
 static PLAY_FALLBACK: &str = "games";
 
 struct GameQuery {
@@ -106,7 +104,7 @@ pub async fn get_command_output(
     let gif_cache = context.gif_cache();
     let gif = match &game {
         None => get_cached_gif(gif_cache, PLAY_FALLBACK)?,
-        Some(game) => get_game_gif(context.tenor(), gif_cache, game).await?,
+        Some(game) => get_game_gif(context.klipy(), gif_cache, game).await?,
     };
     let mut message = format!("{mention}! Let's play ");
     if let Some(game) = game {
@@ -118,7 +116,7 @@ pub async fn get_command_output(
 }
 
 async fn get_game_gif(
-    tenor: &Tenor<'_>,
+    klipy: &Klipy<'_>,
     gif_cache: &GifCache,
     game: &str,
 ) -> Result<Arc<Url>, GifError> {
@@ -126,7 +124,7 @@ async fn get_game_gif(
     match get_cached_gif(gif_cache, &query) {
         Ok(gif) => Ok(gif),
         Err(GifError::NoGifs) => {
-            if refresh_gif_cache_for_query(tenor, gif_cache, &query, None).await {
+            if refresh_gif_cache_for_query(klipy, gif_cache, &query, None).await {
                 get_cached_gif(gif_cache, &query)
             } else {
                 Err(GifError::NoGifs)
@@ -137,12 +135,12 @@ async fn get_game_gif(
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn refresh_play_gifs(tenor: &Tenor<'_>, gif_cache: &GifCache) {
-    refresh_gif_cache_for_query(tenor, gif_cache, PLAY_FALLBACK, Some(FALLBACK_CONFIG)).await;
+pub async fn refresh_play_gifs(klipy: &Klipy<'_>, gif_cache: &GifCache) {
+    refresh_gif_cache_for_query(klipy, gif_cache, PLAY_FALLBACK, None).await;
 
     // TODO cache n most popular games
     for &GameQuery { query, .. } in GAME_AUTOCOMPLETION {
-        refresh_gif_cache_for_query(tenor, gif_cache, query, None).await;
+        refresh_gif_cache_for_query(klipy, gif_cache, query, None).await;
     }
 }
 

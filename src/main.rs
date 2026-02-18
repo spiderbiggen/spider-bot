@@ -7,12 +7,12 @@ use crate::commands::gifs::GifError;
 use crate::consts::GIF_COUNT;
 use db::{BotDatabase, DatabaseConnection};
 use dotenv::dotenv;
+use klipy::models::{ContentFilter, Format};
+use klipy::{Config, Klipy};
 use poise::CreateReply;
 use serenity::all::GatewayIntents;
 use serenity::client::Client as Serenity;
 use std::env;
-use tenor::models::{ContentFilter, MediaFilter};
-use tenor::{Client as Tenor, Config};
 use tracing_subscriber::prelude::*;
 
 mod background_tasks;
@@ -23,14 +23,15 @@ mod context;
 mod util;
 
 pub(crate) const BASE_GIF_CONFIG: Config = Config::new()
-    .content_filter(ContentFilter::Medium)
-    .media_filter(&[MediaFilter::Gif])
-    .limit(GIF_COUNT);
+    .content_filter(ContentFilter::Low)
+    .format_filter(&[Format::Webp, Format::Gif])
+    .locale("nl")
+    .per_page(GIF_COUNT);
 
 #[derive(Debug, Clone)]
-struct SpiderBot<'tenor> {
+struct SpiderBot<'klipy> {
     gif_cache: GifCache,
-    tenor: Tenor<'tenor>,
+    klipy: Klipy<'klipy>,
     database: BotDatabase,
 }
 
@@ -43,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let discord_token: &str = env::var("DISCORD_TOKEN")?.leak();
-    let tenor_token: &str = env::var("TENOR_TOKEN")?.leak();
+    let klipy_token: &str = env::var("KLIPY_TOKEN")?.leak();
 
     let anime_url = match resolve_env("ANIME_URL") {
         Ok(anime_url) => Some(anime_url.leak()),
@@ -59,11 +60,11 @@ async fn main() -> anyhow::Result<()> {
     // Login with a bot token from the environment
     let bot = SpiderBot {
         gif_cache: GifCache::new(),
-        tenor: Tenor::with_config(tenor_token, Some(BASE_GIF_CONFIG)),
+        klipy: Klipy::with_config(klipy_token, None, Some(BASE_GIF_CONFIG)),
         database: database.clone(),
     };
 
-    start_gif_updater(bot.tenor.clone(), bot.gif_cache.clone())?;
+    start_gif_updater(bot.klipy.clone(), bot.gif_cache.clone())?;
     start_cache_trim(bot.gif_cache.clone());
 
     let intents = GatewayIntents::non_privileged();
