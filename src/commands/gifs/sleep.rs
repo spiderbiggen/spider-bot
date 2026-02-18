@@ -6,7 +6,7 @@ use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use klipy::Klipy;
 use klipy::models::Format;
-use rand::Rng;
+use rand::RngExt;
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use std::sync::Arc;
 use tracing::instrument;

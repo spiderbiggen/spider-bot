@@ -1,6 +1,6 @@
 use crate::consts;
 use dashmap::DashMap;
-use rand::Rng;
+use rand::RngExt;
 use rustc_hash::FxBuildHasher;
 use std::borrow::Borrow;
 use std::sync::Arc;
