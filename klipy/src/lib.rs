@@ -120,8 +120,6 @@ impl<'config> Klipy<'config> {
 #[derive(Debug, Clone, Copy)]
 pub struct Config<'config> {
     /// Strongly recommended
-    country: Option<&'config str>,
-    /// Strongly recommended
     locale: Option<&'config str>,
     /// Strongly recommended
     content_filter: Option<ContentFilter>,
@@ -135,7 +133,6 @@ impl<'config> Config<'config> {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            country: None,
             locale: None,
             content_filter: None,
             format_filter: None,
@@ -176,9 +173,6 @@ impl<'config> Config<'config> {
 
     #[must_use]
     pub fn merge(mut self, other: Self) -> Option<Self> {
-        if let Some(country) = other.country {
-            self.country.replace(country);
-        }
         if let Some(locale) = other.locale {
             self.locale.replace(locale);
         }
