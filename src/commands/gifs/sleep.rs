@@ -114,7 +114,7 @@ async fn refresh_gif_cache_for_resolver(
         let gifs = klipy.search(query, None).await?;
         gif_collection.extend(
             gifs.into_iter()
-                .filter_map(|gif| gif.into_media(Format::Webp)),
+                .filter_map(|gif| gif.into_media(Format::Gif)),
         );
     }
     let name = resolver.name;

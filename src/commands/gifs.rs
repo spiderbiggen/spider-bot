@@ -118,7 +118,7 @@ async fn refresh_gif_cache_for_query(
         Ok(gifs) => {
             let urls: Box<[Arc<Url>]> = gifs
                 .into_iter()
-                .filter_map(|gif| gif.into_media(Format::Webp))
+                .filter_map(|gif| gif.into_media(Format::Gif))
                 .map(Arc::new)
                 .collect();
             cache_gifs(gif_cache, query, urls, LONG_CACHE_LIFETIME);
