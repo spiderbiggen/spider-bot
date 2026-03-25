@@ -133,17 +133,30 @@ const FROGGERS_RATIO_QUERY: RatioQuery = RatioQuery {
 };
 
 static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
-    seasons: &[Season {
-        range: DateRange::new(
-            day_of_month!(15, Month::October),
-            day_of_month!(31, Month::October),
-        ),
-        resolver: GifResolver {
-            name: "halloween sleep",
-            ratio_override: Some(FROGGERS_RATIO_QUERY),
-            queries: &["halloween_sleep", "spooky_sleep", "horror_sleep"],
+    seasons: &[
+        Season {
+            range: DateRange::new(
+                day_of_month!(15, Month::October),
+                day_of_month!(31, Month::October),
+            ),
+            resolver: GifResolver {
+                name: "halloween sleep",
+                ratio_override: Some(FROGGERS_RATIO_QUERY),
+                queries: &["halloween_sleep", "spooky_sleep", "horror_sleep"],
+            },
         },
-    }],
+        Season {
+            range: DateRange::new(
+                day_of_month!(2, Month::April),
+                day_of_month!(6, Month::April),
+            ),
+            resolver: GifResolver {
+                name: "easter sleep",
+                ratio_override: Some(FROGGERS_RATIO_QUERY),
+                queries: &["easter bunny sleep", "egg sleep", "easter", "easter island"],
+            },
+        },
+    ],
     default: GifResolver {
         name: "sleep",
         ratio_override: Some(FROGGERS_RATIO_QUERY),
@@ -156,6 +169,7 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
             "duck sleep",
             "sheep sleep",
             "animal sleep",
+            "kirby sleep",
         ],
     },
 };
