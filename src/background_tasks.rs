@@ -19,7 +19,7 @@ use tracing::instrument;
 use db::BotDatabase;
 use domain::{Download, DownloadCollection, Subscribed, Subscriber};
 
-use crate::GifCache;
+use crate::cache::GifCacheWriter;
 use crate::commands::gifs;
 use crate::consts::SHORT_CACHE_LIFETIME;
 
@@ -35,13 +35,12 @@ fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
     Ok(interval_at(best_effort_start, period))
 }
 
-pub(crate) fn start_gif_updater(klipy: Klipy<'static>, gif_cache: GifCache) -> anyhow::Result<()> {
-    let context = (klipy, gif_cache);
+pub(crate) fn start_gif_updater(klipy: Klipy<'static>, gif_cache_writer: GifCacheWriter) -> anyhow::Result<()> {
     let mut interval = interval_at_previous_period(Duration::from_secs(6 * 3600))?;
     tokio::spawn(async move {
         loop {
             interval.tick().await;
-            gifs::refresh_global_gif_cache(&context).await;
+            gifs::refresh_global_gif_cache(&klipy, &gif_cache_writer).await;
         }
     });
     Ok(())
@@ -51,13 +50,13 @@ pub(crate) fn start_gif_updater(klipy: Klipy<'static>, gif_cache: GifCache) -> a
 ///
 /// ### Arguments
 ///
-/// - `gif_cache` - the cache of GIFs
-pub(crate) fn start_cache_trim(gif_cache: GifCache) {
+/// - `gif_cache_writer` - the cache writer handle
+pub(crate) fn start_cache_trim(gif_cache_writer: GifCacheWriter) {
     let mut interval = tokio::time::interval(SHORT_CACHE_LIFETIME);
     tokio::spawn(async move {
         loop {
             interval.tick().await;
-            gif_cache.trim();
+            gif_cache_writer.trim();
         }
     });
 }

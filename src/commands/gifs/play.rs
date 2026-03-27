@@ -1,8 +1,10 @@
 use super::refresh_gif_cache_for_query;
-use crate::cache::GifCache;
+use crate::cache::{GifCacheReader, GifCacheWriter};
 use crate::commands::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS, get_cached_gif};
 use crate::context::{Context, GifContextExt};
+use klipy::models::Format;
 use klipy::Klipy;
+use rand::RngExt;
 use rustrict::CensorStr;
 use std::borrow::Cow;
 use std::fmt::Write;
@@ -101,10 +103,10 @@ pub async fn get_command_output(
     mention: &str,
     game: Option<String>,
 ) -> Result<CommandOutput, GifError> {
-    let gif_cache = context.gif_cache();
+    let (klipy, gif_cache, gif_cache_writer) = context.gif_context();
     let gif = match &game {
         None => get_cached_gif(gif_cache, PLAY_FALLBACK)?,
-        Some(game) => get_game_gif(context.klipy(), gif_cache, game).await?,
+        Some(game) => get_game_gif(klipy, gif_cache, gif_cache_writer, game).await?,
     };
     let mut message = format!("{mention}! Let's play ");
     if let Some(game) = game {
@@ -117,30 +119,45 @@ pub async fn get_command_output(
 
 async fn get_game_gif(
     klipy: &Klipy<'_>,
-    gif_cache: &GifCache,
+    reader: &GifCacheReader,
+    writer: &GifCacheWriter,
     game: &str,
 ) -> Result<Arc<Url>, GifError> {
     let query = transform_query(game)?;
-    match get_cached_gif(gif_cache, &query) {
-        Ok(gif) => Ok(gif),
-        Err(GifError::NoGifs) => {
-            if refresh_gif_cache_for_query(klipy, gif_cache, &query, None).await {
-                get_cached_gif(gif_cache, &query)
-            } else {
-                Err(GifError::NoGifs)
-            }
-        }
-        Err(err) => Err(err),
+
+    // Cache hit — return immediately without a network call.
+    if let Some(gif) = reader.get_random(&*query) {
+        return Ok(gif);
     }
+
+    // Cache miss: fetch from the API directly so we can return a result in
+    // this request without waiting for the writer task to apply the insert.
+    let gifs = klipy.search(&*query, None).await?;
+    let urls: Box<[Arc<Url>]> = gifs
+        .into_iter()
+        .filter_map(|gif| gif.into_media(Format::Gif))
+        .map(Arc::new)
+        .collect();
+
+    if urls.is_empty() {
+        return Err(GifError::NoGifs);
+    }
+
+    let gif = Arc::clone(&urls[rand::rng().random_range(0..urls.len())]);
+
+    // Fire-and-forget: populate the cache for future requests.
+    writer.insert_with_duration(&*query, urls, crate::consts::LONG_CACHE_LIFETIME);
+
+    Ok(gif)
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn refresh_play_gifs(klipy: &Klipy<'_>, gif_cache: &GifCache) {
-    refresh_gif_cache_for_query(klipy, gif_cache, PLAY_FALLBACK, None).await;
+pub async fn refresh_play_gifs(klipy: &Klipy<'_>, writer: &GifCacheWriter) {
+    refresh_gif_cache_for_query(klipy, writer, PLAY_FALLBACK, None).await;
 
     // TODO cache n most popular games
     for &GameQuery { query, .. } in GAME_AUTOCOMPLETION {
-        refresh_gif_cache_for_query(klipy, gif_cache, query, None).await;
+        refresh_gif_cache_for_query(klipy, writer, query, None).await;
     }
 }
 

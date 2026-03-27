@@ -1,10 +1,10 @@
 mod play;
 mod sleep;
 
-use crate::cache::GifCache;
+use crate::cache::{GifCacheReader, GifCacheWriter};
 use crate::commands::CommandError;
 use crate::consts::LONG_CACHE_LIFETIME;
-use crate::context::{Context, GifCacheExt, GifContextExt};
+use crate::context::{Context, GifCacheExt};
 use klipy::models::Format;
 use klipy::{Config, Klipy};
 use poise::serenity_prelude as serenity;
@@ -96,21 +96,20 @@ async fn send_gif_message(
 }
 
 #[instrument(skip_all)]
-pub(crate) async fn refresh_global_gif_cache(context: &impl GifContextExt<'_>) {
-    let (klipy, gif_cache) = context.gif_context();
-    sleep::refresh_sleep_gifs(klipy, gif_cache).await;
-    play::refresh_play_gifs(klipy, gif_cache).await;
-    refresh_gif_cache(klipy, gif_cache).await;
+pub(crate) async fn refresh_global_gif_cache(klipy: &Klipy<'_>, writer: &GifCacheWriter) {
+    sleep::refresh_sleep_gifs(klipy, writer).await;
+    play::refresh_play_gifs(klipy, writer).await;
+    refresh_gif_cache(klipy, writer).await;
 }
 
-async fn refresh_gif_cache(klipy: &Klipy<'_>, gif_cache: &GifCache) {
-    refresh_gif_cache_for_query(klipy, gif_cache, HURRY_QUERY, None).await;
-    refresh_gif_cache_for_query(klipy, gif_cache, MORBIN_QUERY, None).await;
+async fn refresh_gif_cache(klipy: &Klipy<'_>, writer: &GifCacheWriter) {
+    refresh_gif_cache_for_query(klipy, writer, HURRY_QUERY, None).await;
+    refresh_gif_cache_for_query(klipy, writer, MORBIN_QUERY, None).await;
 }
 
-async fn refresh_gif_cache_for_query(
+pub(super) async fn refresh_gif_cache_for_query(
     klipy: &Klipy<'_>,
-    gif_cache: &GifCache,
+    writer: &GifCacheWriter,
     query: &str,
     cfg: Option<Config<'_>>,
 ) -> bool {
@@ -121,8 +120,7 @@ async fn refresh_gif_cache_for_query(
                 .filter_map(|gif| gif.into_media(Format::Gif))
                 .map(Arc::new)
                 .collect();
-            cache_gifs(gif_cache, query, urls, LONG_CACHE_LIFETIME);
-            true
+            cache_gifs(writer, query, urls, LONG_CACHE_LIFETIME)
         }
         Err(error) => {
             tracing::error!(query, "Error fetching gifs for: {error}");
@@ -138,13 +136,13 @@ fn mention_or_here(user: Option<&User>) -> Cow<'static, str> {
 }
 
 #[inline]
-fn get_cached_gif(cache: &GifCache, query: &str) -> Result<Arc<Url>, GifError> {
+pub(super) fn get_cached_gif(cache: &GifCacheReader, query: &str) -> Result<Arc<Url>, GifError> {
     cache.get_random(query).ok_or(GifError::NoGifs)
 }
 
-#[tracing::instrument(skip(cache, gifs), fields(gifs.len = gifs.len()))]
-fn cache_gifs(cache: &GifCache, key: &str, gifs: Box<[Arc<Url>]>, duration: Duration) -> bool {
-    let updated = cache.insert_with_duration(key, gifs, duration);
+#[tracing::instrument(skip(writer, gifs), fields(gifs.len = gifs.len()))]
+fn cache_gifs(writer: &GifCacheWriter, key: &str, gifs: Box<[Arc<Url>]>, duration: Duration) -> bool {
+    let updated = writer.insert_with_duration(key, gifs, duration);
     if updated {
         tracing::info!("Updated cache");
     }

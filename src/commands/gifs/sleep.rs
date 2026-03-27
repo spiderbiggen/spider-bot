@@ -1,7 +1,8 @@
+use crate::cache::{GifCacheReader, GifCacheWriter};
 use crate::commands::gifs::{GifError, get_cached_gif};
 use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
 use crate::util::{DateRange, DayOfMonth};
-use crate::{GifCache, day_of_month};
+use crate::day_of_month;
 use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use klipy::Klipy;
@@ -13,24 +14,24 @@ use tracing::instrument;
 use url::Url;
 
 #[instrument(skip_all, err)]
-pub async fn get_gif(gif_cache: &GifCache) -> Result<Arc<Url>, GifError> {
+pub async fn get_gif(gif_cache: &GifCacheReader) -> Result<Arc<Url>, GifError> {
     let date = Utc::now().date_naive();
     SLEEP_GIF_COLLECTION.current(date).get_gif(gif_cache).await
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn refresh_sleep_gifs(klipy: &Klipy<'_>, gif_cache: &GifCache) {
+pub async fn refresh_sleep_gifs(klipy: &Klipy<'_>, writer: &GifCacheWriter) {
     let date = Utc::now().date_naive();
     for Season { resolver, range } in SLEEP_GIF_COLLECTION.seasons {
         if !range.should_cache(date) {
             continue;
         }
-        if let Err(error) = refresh_gif_cache_for_resolver(klipy, gif_cache, resolver).await {
+        if let Err(error) = refresh_gif_cache_for_resolver(klipy, writer, resolver).await {
             tracing::error!("Error caching gifs for {}: {error}", resolver.name);
         }
     }
     let resolver = &SLEEP_GIF_COLLECTION.default;
-    if let Err(error) = refresh_gif_cache_for_resolver(klipy, gif_cache, resolver).await {
+    if let Err(error) = refresh_gif_cache_for_resolver(klipy, writer, resolver).await {
         tracing::error!("Error caching gifs for {}: {error}", resolver.name);
         panic!()
     }
@@ -81,7 +82,7 @@ impl<'gifs> GifCollection<'gifs> {
 
 impl GifResolver<'_> {
     #[instrument(skip_all, err)]
-    async fn get_gif(&self, gif_cache: &GifCache) -> Result<Arc<Url>, GifError> {
+    async fn get_gif(&self, gif_cache: &GifCacheReader) -> Result<Arc<Url>, GifError> {
         if let Some(query) = self.get_override() {
             tracing::debug!("Found gif override");
             match query.parse() {
@@ -103,7 +104,7 @@ impl GifResolver<'_> {
 
 async fn refresh_gif_cache_for_resolver(
     klipy: &Klipy<'_>,
-    gif_cache: &GifCache,
+    writer: &GifCacheWriter,
     resolver: &GifResolver<'_>,
 ) -> Result<(), GifError> {
     let max_capacity = resolver.queries.len() * usize::from(GIF_COUNT);
@@ -120,7 +121,7 @@ async fn refresh_gif_cache_for_resolver(
     let name = resolver.name;
     let urls: Box<[Arc<Url>]> = gif_collection.into_iter().map(Arc::new).collect();
     let gif_count = urls.len();
-    if gif_cache.insert_with_duration(name, urls, LONG_CACHE_LIFETIME) {
+    if writer.insert_with_duration(name, urls, LONG_CACHE_LIFETIME) {
         tracing::info!(gif_count, "Put \"{name}\" gifs into cache");
     }
     Ok(())

@@ -1,7 +1,7 @@
 extern crate core;
 
 use crate::background_tasks::{DiscordApi, start_cache_trim, start_gif_updater};
-use crate::cache::GifCache;
+use crate::cache::{GifCacheReader, GifCacheWriter};
 use crate::commands::CommandError;
 use crate::commands::gifs::GifError;
 use crate::consts::GIF_COUNT;
@@ -30,7 +30,8 @@ pub(crate) const BASE_GIF_CONFIG: Config = Config::new()
 
 #[derive(Debug, Clone)]
 struct SpiderBot<'klipy> {
-    gif_cache: GifCache,
+    gif_cache: GifCacheReader,
+    gif_cache_writer: GifCacheWriter,
     klipy: Klipy<'klipy>,
     database: BotDatabase,
 }
@@ -57,15 +58,16 @@ async fn main() -> anyhow::Result<()> {
     let database = db::connect(env!("CARGO_PKG_NAME")).await?;
     database.migrate().await?;
 
-    // Login with a bot token from the environment
+    let (gif_cache, gif_cache_writer) = cache::create_gif_cache();
     let bot = SpiderBot {
-        gif_cache: GifCache::new(),
+        gif_cache,
+        gif_cache_writer: gif_cache_writer.clone(),
         klipy: Klipy::with_config(klipy_token, None, Some(BASE_GIF_CONFIG)),
         database: database.clone(),
     };
 
-    start_gif_updater(bot.klipy.clone(), bot.gif_cache.clone())?;
-    start_cache_trim(bot.gif_cache.clone());
+    start_gif_updater(bot.klipy.clone(), gif_cache_writer.clone())?;
+    start_cache_trim(gif_cache_writer);
 
     let intents = GatewayIntents::non_privileged();
 
