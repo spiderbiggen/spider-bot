@@ -146,7 +146,7 @@ async fn get_game_gif(
     let gif = Arc::clone(&urls[rand::rng().random_range(0..urls.len())]);
 
     // Fire-and-forget: populate the cache for future requests.
-    writer.insert_with_duration(&*query, urls, crate::consts::LONG_CACHE_LIFETIME);
+    writer.insert_with_duration(query, urls, crate::consts::LONG_CACHE_LIFETIME);
 
     Ok(gif)
 }

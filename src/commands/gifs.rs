@@ -54,7 +54,7 @@ pub(crate) async fn play(
 
 #[instrument(skip_all)]
 #[poise::command(slash_command)]
-///Tell someone to hurry up
+/// Tell someone to hurry up
 pub(crate) async fn hurry(
     ctx: Context<'_, '_>,
     #[description = "Who should hurry up"] user: Option<User>,
