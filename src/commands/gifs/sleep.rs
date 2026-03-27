@@ -183,15 +183,17 @@ mod test {
     /// A deterministic RNG that always returns the same `u64` value.
     /// `Bernoulli::sample` calls `rng.random()` → `next_u64()` and returns
     /// `true` iff the value is less than `p_int`.  So:
-    ///   - `ConstRng(0)`         → always triggers (0 < any p_int > 0)
-    ///   - `ConstRng(u64::MAX)`  → never triggers  (MAX ≥ any p_int < MAX)
+    ///   - `ConstRng(0)`         → always triggers (0 < any `p_int` > 0)
+    ///   - `ConstRng(u64::MAX)`  → never triggers  (MAX ≥ any `p_int` < MAX)
     struct ConstRng(u64);
 
     impl TryRng for ConstRng {
         type Error = Infallible;
 
         fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
-            Ok(self.0 as u32)
+            // Tests only exercise try_next_u64; truncate to lower 32 bits as a
+            // reasonable fallback (0 stays 0, u64::MAX wraps to u32::MAX).
+            Ok(u32::try_from(self.0).unwrap_or(u32::MAX))
         }
         fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
             Ok(self.0)
@@ -202,6 +204,32 @@ mod test {
                 *b = bytes[i % 8];
             }
             Ok(())
+        }
+    }
+
+    #[test]
+    fn all_resolvers_have_froggers_ratio_of_one_in_150() {
+        let all_resolvers = SLEEP_GIF_COLLECTION
+            .seasons
+            .iter()
+            .map(|s| &s.resolver)
+            .chain(std::iter::once(&SLEEP_GIF_COLLECTION.default));
+
+        for resolver in all_resolvers {
+            let ratio = resolver
+                .ratio_override
+                .as_ref()
+                .unwrap_or_else(|| panic!("resolver \"{}\" has no ratio_override", resolver.name));
+            assert_eq!(
+                ratio.numerator, 1,
+                "resolver \"{}\" has wrong numerator",
+                resolver.name
+            );
+            assert_eq!(
+                ratio.denominator, 150,
+                "resolver \"{}\" has wrong denominator",
+                resolver.name
+            );
         }
     }
 
