@@ -3,7 +3,7 @@ use db::{BalanceTransactionError, UserBalanceConnection, UserBalanceTransaction}
 use futures::StreamExt;
 use itertools::Itertools;
 use poise::CreateReply;
-use serenity::all::{CreateEmbed, Member, Permissions};
+use serenity::all::{CreateEmbed, Member, Mention, Mentionable, Permissions};
 use std::num::{NonZeroI16, NonZeroU16};
 
 const INITIAL_BALANCE: i64 = 500;
@@ -114,7 +114,7 @@ async fn handle_transfer_error(
         }
         BalanceTransactionError::RecipientUninitialized => {
             format!(
-                "Tell @{} to use `/coins balance` to initialize their coins.",
+                "Tell @{} to use `/coins balance` to get started.",
                 member.display_name()
             )
         }
@@ -127,10 +127,10 @@ async fn handle_transfer_error(
     Ok(())
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone)]
 struct MemberBalance {
     balance: i64,
-    username: String,
+    username: Mention,
 }
 
 #[poise::command(slash_command, guild_only)]
@@ -156,8 +156,8 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
             }
 
             Some(MemberBalance {
-                username: member.display_name().to_string(),
                 balance: user_balance.balance,
+                username: member.mention(),
             })
         })
         .buffered(8)
