@@ -3,7 +3,9 @@ use db::{BalanceTransactionError, UserBalanceConnection, UserBalanceTransaction}
 use futures::StreamExt;
 use itertools::Itertools;
 use poise::CreateReply;
-use serenity::all::{CreateEmbed, Member, Mention, Mentionable, Permissions};
+use serenity::all::{
+    CreateAllowedMentions, CreateEmbed, Member, Mention, Mentionable, Permissions,
+};
 use std::num::{NonZeroI16, NonZeroU16};
 
 const INITIAL_BALANCE: i64 = 500;
@@ -190,7 +192,11 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
         .description(description)
         .color(0xFF_D7_00);
 
-    ctx.send(CreateReply::default().embed(embed)).await?;
+    // Empty allowed mentions to avoid mentioning everyone in the server.
+    let reply = CreateReply::default()
+        .embed(embed)
+        .allowed_mentions(CreateAllowedMentions::new());
+    ctx.send(reply).await?;
     Ok(())
 }
 
