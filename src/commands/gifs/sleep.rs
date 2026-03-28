@@ -83,7 +83,7 @@ impl<'gifs> GifCollection<'gifs> {
 impl GifResolver<'_> {
     #[instrument(skip_all, err)]
     async fn get_gif(&self, gif_cache: &GifCacheReader) -> Result<Arc<Url>, GifError> {
-        if let Some(query) = self.get_override() {
+        if let Some(query) = self.get_override(&mut rand::rng()) {
             tracing::debug!("Found gif override");
             match query.parse() {
                 Ok(url) => return Ok(Arc::new(url)),
@@ -94,10 +94,10 @@ impl GifResolver<'_> {
     }
 
     #[must_use]
-    fn get_override(&self) -> Option<&'static str> {
+    fn get_override(&self, rng: &mut impl rand::Rng) -> Option<&'static str> {
         self.ratio_override
             .as_ref()
-            .filter(|ratio| rand::rng().random_ratio(ratio.numerator, ratio.denominator))
+            .filter(|ratio| rng.random_ratio(ratio.numerator, ratio.denominator))
             .map(|query| query.gif_url)
     }
 }
@@ -178,19 +178,73 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
 #[cfg(test)]
 mod test {
     use super::*;
+    use rand::rand_core::{Infallible, TryRng};
+
+    /// A deterministic RNG that always returns the same `u64` value.
+    /// `Bernoulli::sample` calls `rng.random()` → `next_u64()` and returns
+    /// `true` iff the value is less than `p_int`.  So:
+    ///   - `ConstRng(0)`         → always triggers (0 < any `p_int` > 0)
+    ///   - `ConstRng(u64::MAX)`  → never triggers  (MAX ≥ any `p_int` < MAX)
+    struct ConstRng(u64);
+
+    impl TryRng for ConstRng {
+        type Error = Infallible;
+
+        fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+            // Tests only exercise try_next_u64; truncate to lower 32 bits as a
+            // reasonable fallback (0 stays 0, u64::MAX wraps to u32::MAX).
+            Ok(u32::try_from(self.0).unwrap_or(u32::MAX))
+        }
+        fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+            Ok(self.0)
+        }
+        fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+            let bytes = self.0.to_le_bytes();
+            for (i, b) in dst.iter_mut().enumerate() {
+                *b = bytes[i % 8];
+            }
+            Ok(())
+        }
+    }
 
     #[test]
-    fn froggers_chance() {
-        let mut occurences = 0u32;
-        let iterations = 10_000_000u32;
-        for _ in 0..iterations {
-            if SLEEP_GIF_COLLECTION.default.get_override().is_some() {
-                occurences += 1;
-            }
+    fn all_resolvers_have_froggers_ratio_of_one_in_150() {
+        let all_resolvers = SLEEP_GIF_COLLECTION
+            .seasons
+            .iter()
+            .map(|s| &s.resolver)
+            .chain(std::iter::once(&SLEEP_GIF_COLLECTION.default));
+
+        for resolver in all_resolvers {
+            let ratio = resolver
+                .ratio_override
+                .as_ref()
+                .unwrap_or_else(|| panic!("resolver \"{}\" has no ratio_override", resolver.name));
+            assert_eq!(
+                ratio.numerator, 1,
+                "resolver \"{}\" has wrong numerator",
+                resolver.name
+            );
+            assert_eq!(
+                ratio.denominator, 150,
+                "resolver \"{}\" has wrong denominator",
+                resolver.name
+            );
         }
-        let average_rolls = f64::from(iterations) / f64::from(occurences);
-        eprintln!("Froggers average rolls[iterations={iterations}]: {average_rolls:.2}");
-        assert!(average_rolls > 149.0 && average_rolls < 151.0);
+    }
+
+    #[test]
+    fn get_override_returns_url_when_ratio_fires() {
+        let resolver = &SLEEP_GIF_COLLECTION.default;
+        let result = resolver.get_override(&mut ConstRng(0));
+        assert_eq!(result, Some(FROGGERS_RATIO_QUERY.gif_url));
+    }
+
+    #[test]
+    fn get_override_returns_none_when_ratio_does_not_fire() {
+        let resolver = &SLEEP_GIF_COLLECTION.default;
+        let result = resolver.get_override(&mut ConstRng(u64::MAX));
+        assert_eq!(result, None);
     }
 
     #[test]
