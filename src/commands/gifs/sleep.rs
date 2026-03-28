@@ -1,8 +1,8 @@
 use crate::cache::{GifCacheReader, GifCacheWriter};
 use crate::commands::gifs::{GifError, get_cached_gif};
 use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
-use crate::util::{DateRange, DayOfMonth};
 use crate::day_of_month;
+use crate::util::{DateRange, DayOfMonth};
 use chrono::Utc;
 use chrono::{Month, NaiveDate};
 use klipy::Klipy;

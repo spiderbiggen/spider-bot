@@ -141,7 +141,12 @@ pub(super) fn get_cached_gif(cache: &GifCacheReader, query: &str) -> Result<Arc<
 }
 
 #[tracing::instrument(skip(writer, gifs), fields(gifs.len = gifs.len()))]
-fn cache_gifs(writer: &GifCacheWriter, key: &str, gifs: Box<[Arc<Url>]>, duration: Duration) -> bool {
+fn cache_gifs(
+    writer: &GifCacheWriter,
+    key: &str,
+    gifs: Box<[Arc<Url>]>,
+    duration: Duration,
+) -> bool {
     let updated = writer.insert_with_duration(key, gifs, duration);
     if updated {
         tracing::info!("Updated cache");

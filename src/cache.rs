@@ -56,7 +56,11 @@ async fn cache_writer_task(
                 value,
                 fresh_until,
             } => {
-                inner.insert(key, Value { fresh_until, data: value });
+                let value = Value {
+                    fresh_until,
+                    data: value,
+                };
+                inner.insert(key, value);
             }
             WriteOp::Trim => {
                 let now = Instant::now();
@@ -119,7 +123,11 @@ impl GifCacheWriter {
             return false;
         }
         tracing::Span::current().record("key", &key);
-        if let Err(e) = self.tx.try_send(WriteOp::Insert { key, value, fresh_until }) {
+        if let Err(e) = self.tx.try_send(WriteOp::Insert {
+            key,
+            value,
+            fresh_until,
+        }) {
             tracing::warn!("Failed to queue gif cache insert: {e}");
             return false;
         }

@@ -2,8 +2,8 @@ use super::refresh_gif_cache_for_query;
 use crate::cache::{GifCacheReader, GifCacheWriter};
 use crate::commands::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS, get_cached_gif};
 use crate::context::{Context, GifContextExt};
-use klipy::models::Format;
 use klipy::Klipy;
+use klipy::models::Format;
 use rand::RngExt;
 use rustrict::CensorStr;
 use std::borrow::Cow;
@@ -132,7 +132,7 @@ async fn get_game_gif(
 
     // Cache miss: fetch from the API directly so we can return a result in
     // this request without waiting for the writer task to apply the insert.
-    let gifs = klipy.search(&*query, None).await?;
+    let gifs = klipy.search(&query, None).await?;
     let urls: Box<[Arc<Url>]> = gifs
         .into_iter()
         .filter_map(|gif| gif.into_media(Format::Gif))
