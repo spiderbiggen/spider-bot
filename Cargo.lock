@@ -2794,6 +2794,7 @@ dependencies = [
  "dotenv",
  "envmnt",
  "futures",
+ "itertools 0.14.0",
  "klipy",
  "otaku",
  "poise",

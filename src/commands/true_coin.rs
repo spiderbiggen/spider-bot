@@ -1,6 +1,7 @@
 use crate::context::Context;
 use db::{BalanceTransactionError, UserBalanceConnection, UserBalanceTransaction};
 use futures::StreamExt;
+use itertools::Itertools;
 use poise::CreateReply;
 use serenity::all::{CreateEmbed, Member, Permissions};
 use std::num::{NonZeroI16, NonZeroU16};
@@ -171,23 +172,23 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
 
     let description = member_balances
         .iter()
+        .take(20)
         .enumerate()
         .map(|(i, MemberBalance { username, balance })| {
             let rank = match i {
-                0 => "🥇".to_string(),
-                1 => "🥈".to_string(),
-                2 => "🥉".to_string(),
-                n => format!("{}.", n + 1),
+                0 => format_args!("🥇"),
+                1 => format_args!("🥈"),
+                2 => format_args!("🥉"),
+                n => format_args!("{}\\.", n + 1),
             };
-            format!("{rank} **{username}** — {} 🪙", format_balance(*balance))
+            format!("{rank} **{username}** — {}", format_balance(*balance))
         })
-        .collect::<Vec<_>>()
         .join("\n");
 
     let embed = CreateEmbed::new()
         .title("🪙 True Coin Leaderboard")
         .description(description)
-        .color(0x00FF_D700_u32);
+        .color(0xFF_D7_00);
 
     ctx.send(CreateReply::default().embed(embed)).await?;
     Ok(())
