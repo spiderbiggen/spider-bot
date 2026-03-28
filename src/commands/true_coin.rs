@@ -2,8 +2,7 @@ use crate::context::Context;
 use db::{BalanceTransactionError, UserBalanceConnection, UserBalanceTransaction};
 use futures::StreamExt;
 use poise::CreateReply;
-use serenity::all::{Member, Permissions};
-use std::fmt::Write;
+use serenity::all::{CreateEmbed, Member, Permissions};
 use std::num::{NonZeroI16, NonZeroU16};
 
 const INITIAL_BALANCE: i64 = 500;
@@ -170,19 +169,27 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
         return Ok(());
     }
 
-    let width = member_balances
+    let description = member_balances
         .iter()
-        .map(|m| m.username.len())
-        .max()
-        .unwrap_or(0);
+        .enumerate()
+        .map(|(i, MemberBalance { username, balance })| {
+            let rank = match i {
+                0 => "🥇".to_string(),
+                1 => "🥈".to_string(),
+                2 => "🥉".to_string(),
+                n => format!("{}.", n + 1),
+            };
+            format!("{rank} **{username}** — {} 🪙", format_balance(*balance))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    let mut message = String::from("```\nCurrent True Coin balances:\n");
-    for MemberBalance { username, balance } in member_balances {
-        let _ = writeln!(&mut message, "{username:>width$}: {balance:>4} 🪙");
-    }
-    message += "```";
-    ctx.say(message).await?;
+    let embed = CreateEmbed::new()
+        .title("🪙 True Coin Leaderboard")
+        .description(description)
+        .color(0x00FF_D700_u32);
 
+    ctx.send(CreateReply::default().embed(embed)).await?;
     Ok(())
 }
 
@@ -250,4 +257,20 @@ pub(crate) async fn update(
     );
     ctx.say(message).await?;
     Ok(())
+}
+
+/// Format a coin balance with thousands separators (e.g. `1234567` → `"1,234,567"`).
+fn format_balance(n: i64) -> String {
+    let digits: Vec<char> = n.unsigned_abs().to_string().chars().rev().collect();
+    let mut parts: Vec<String> = digits
+        .chunks(3)
+        .map(|chunk| chunk.iter().rev().collect::<String>())
+        .collect();
+    parts.reverse();
+    let formatted = parts.join(",");
+    if n < 0 {
+        format!("-{formatted}")
+    } else {
+        formatted
+    }
 }
