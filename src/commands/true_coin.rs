@@ -18,11 +18,14 @@ pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::commands::Comm
     Ok(())
 }
 
-#[poise::command(slash_command)]
+#[poise::command(slash_command, guild_only)]
 pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
     ctx.defer_ephemeral().await?;
 
-    let guild_id = ctx.guild_id().unwrap().get();
+    let Some(guild_id) = ctx.guild_id() else {
+        return Ok(());
+    };
+    let guild_id = guild_id.get();
     let user_id = ctx.author().id.get();
 
     let db = &ctx.data().database;
@@ -40,7 +43,7 @@ pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::commands:
     Ok(())
 }
 
-#[poise::command(slash_command)]
+#[poise::command(slash_command, guild_only)]
 pub(crate) async fn transfer(
     ctx: Context<'_, '_>,
     #[description = "Who to send coins to"] member: Member,
@@ -69,7 +72,10 @@ pub(crate) async fn transfer(
     let Some(from_user) = ctx.author_member().await else {
         return Ok(());
     };
-    let guild_id = ctx.guild_id().unwrap().get();
+    let Some(guild_id) = ctx.guild_id() else {
+        return Ok(());
+    };
+    let guild_id = guild_id.get();
     let result = db
         .transfer_user_balance(
             guild_id,
@@ -121,18 +127,20 @@ async fn handle_transfer_error(
     Ok(())
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 struct MemberBalance {
     balance: i64,
     username: String,
 }
 
-#[poise::command(slash_command)]
+#[poise::command(slash_command, guild_only)]
 pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
 
-    let guild = ctx.guild_id().unwrap();
+    let Some(guild) = ctx.guild_id() else {
+        return Ok(());
+    };
     let guild_id = guild.get();
     let users = db.get_top_user_balances(guild_id).await?;
     if users.is_empty() {
@@ -200,7 +208,10 @@ pub(crate) async fn set(
 ) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
-    let guild_id = ctx.guild_id().unwrap().get();
+    let Some(guild_id) = ctx.guild_id() else {
+        return Ok(());
+    };
+    let guild_id = guild_id.get();
     let user_id = member.user.id.get();
 
     let amount = i64::from(amount);
@@ -223,7 +234,10 @@ pub(crate) async fn update(
 ) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
-    let guild_id = ctx.guild_id().unwrap().get();
+    let Some(guild_id) = ctx.guild_id() else {
+        return Ok(());
+    };
+    let guild_id = guild_id.get();
     let user_id = member.user.id.get();
 
     let amount = i64::from(amount.get());

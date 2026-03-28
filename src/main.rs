@@ -1,5 +1,3 @@
-extern crate core;
-
 use crate::background_tasks::{DiscordApi, start_cache_trim, start_gif_updater};
 use crate::cache::{GifCacheReader, GifCacheWriter};
 use crate::commands::CommandError;
@@ -142,7 +140,7 @@ async fn on_error(
                 }
                 _ => "Internal error".to_string(),
             };
-            eprintln!("An error occurred in a command: {error}");
+            tracing::error!("An error occurred in a command: {error}");
             let msg = CreateReply::default()
                 .ephemeral(true)
                 .content(error_message);

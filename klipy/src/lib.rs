@@ -112,7 +112,7 @@ impl<'config> Klipy<'config> {
         match (self.base_config, config) {
             (None, None) => None,
             (cfg, None) | (None, cfg) => cfg,
-            (Some(base_cfg), Some(other)) => base_cfg.merge(other),
+            (Some(base_cfg), Some(other)) => Some(base_cfg.merge(other)),
         }
     }
 }
@@ -172,7 +172,7 @@ impl<'config> Config<'config> {
     }
 
     #[must_use]
-    pub fn merge(mut self, other: Self) -> Option<Self> {
+    pub fn merge(mut self, other: Self) -> Self {
         if let Some(locale) = other.locale {
             self.locale.replace(locale);
         }
@@ -188,7 +188,7 @@ impl<'config> Config<'config> {
         if let Some(position) = other.page {
             self.page.replace(position);
         }
-        Some(self)
+        self
     }
 }
 
