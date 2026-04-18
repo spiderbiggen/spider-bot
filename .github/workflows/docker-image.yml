@@ -145,7 +145,7 @@ jobs:
           tag: ${{ github.ref_name }}
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
