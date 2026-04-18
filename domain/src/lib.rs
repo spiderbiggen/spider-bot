@@ -45,7 +45,7 @@ impl Display for DownloadVariant {
             DownloadVariant::Episode(episode) => {
                 write!(f, "[Ep {}", episode.number)?;
                 if let Some(decimal) = episode.decimal {
-                    write!(f, ".{decimal}",)?;
+                    write!(f, ".{decimal}")?;
                 }
                 if let Some(version) = episode.version {
                     write!(f, "v{version}")?;

@@ -39,7 +39,7 @@ pub(crate) fn start_gif_updater(
     klipy: Klipy<'static>,
     gif_cache_writer: GifCacheWriter,
 ) -> anyhow::Result<()> {
-    let mut interval = interval_at_previous_period(Duration::from_secs(6 * 3600))?;
+    let mut interval = interval_at_previous_period(Duration::from_hours(6))?;
     tokio::spawn(async move {
         loop {
             interval.tick().await;
