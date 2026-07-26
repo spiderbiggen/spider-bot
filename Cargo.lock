@@ -596,7 +596,7 @@ checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
 
 [[package]]
 name = "db"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "domain",
  "futures-util",
@@ -2702,7 +2702,7 @@ dependencies = [
 
 [[package]]
 name = "spider-bot"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "chrono",
