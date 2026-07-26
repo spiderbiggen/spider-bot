@@ -648,7 +648,7 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "domain"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
 ]
@@ -2785,7 +2785,7 @@ dependencies = [
 
 [[package]]
 name = "spider-bot"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "anyhow",
  "chrono",
