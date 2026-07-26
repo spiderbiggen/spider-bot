@@ -40,7 +40,7 @@ impl Display for DownloadVariant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DownloadVariant::Batch(range) => {
-                write!(f, "[Batch ({}-{})", range.start(), range.end())
+                write!(f, "[Batch ({}-{})]", range.start(), range.end())
             }
             DownloadVariant::Episode(episode) => {
                 write!(f, "[Ep {}", episode.number)?;
