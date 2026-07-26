@@ -9,13 +9,10 @@ workspace = true
 [dependencies]
 domain = { path = "../domain" }
 
-chrono = { workspace = true }
 futures-util = "0.3.28"
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dependencies.sqlx]
-version = "0.8.1"
-features = ["postgres", "runtime-tokio-rustls", "chrono", "uuid"]
-
-
+version = "0.9.0"
+features = ["postgres", "runtime-tokio", "tls-rustls-aws-lc-rs", "chrono", "uuid"]
