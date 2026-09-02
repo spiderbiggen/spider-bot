@@ -9,9 +9,17 @@ pub(crate) enum CommandError {
     #[error(transparent)]
     GifError(#[from] GifError),
     #[error(transparent)]
-    Serenity(#[from] serenity::Error),
+    // This is temporarily boxed until https://github.com/serenity-rs/serenity/pull/3601 is released
+    // and poise is updated as well
+    Serenity(#[from] Box<serenity::Error>),
     #[error(transparent)]
     Database(#[from] db::Error),
+}
+
+impl From<serenity::Error> for CommandError {
+    fn from(err: serenity::Error) -> Self {
+        Self::Serenity(Box::new(err))
+    }
 }
 
 #[tracing::instrument(skip_all)]

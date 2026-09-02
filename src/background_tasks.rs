@@ -136,11 +136,13 @@ enum MessageChannelId {
 }
 
 impl MessageChannelId {
+    // This is temporarily boxed until https://github.com/serenity-rs/serenity/pull/3601 is released
+    // and poise is updated as well
     async fn send_message(
         self,
         cache_http: impl CacheHttp,
         builder: CreateMessage,
-    ) -> Result<Message, serenity::Error> {
+    ) -> Result<Message, Box<serenity::Error>> {
         match self {
             MessageChannelId::User(id) => id.direct_message(cache_http, builder).await,
             MessageChannelId::Guild(guild_id, channel_id) => {
@@ -149,13 +151,16 @@ impl MessageChannelId {
                     .await
             }
         }
+        .map_err(Box::new)
     }
 
+    // This is temporarily boxed until https://github.com/serenity-rs/serenity/pull/3601 is released
+    // and poise is updated as well
     async fn send_embed(
         self,
         cache_http: impl CacheHttp,
         embed: CreateEmbed,
-    ) -> Result<Message, serenity::Error> {
+    ) -> Result<Message, Box<serenity::Error>> {
         self.send_message(cache_http, CreateMessage::new().embed(embed))
             .await
     }
