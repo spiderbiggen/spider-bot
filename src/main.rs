@@ -79,13 +79,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::gifs::sleep(),
                 commands::true_coin::coin(),
             ],
-            on_error: |error| {
-                Box::pin(async move {
-                    if let Err(e) = on_error(error).await {
-                        tracing::error!("Error while handling error: {}", e);
-                    }
-                })
-            },
+            on_error: |error| Box::pin(async move { on_error(error).await }),
             ..Default::default()
         })
         .setup(move |ctx, _ready, framework| {
@@ -129,10 +123,8 @@ fn resolve_env(key: &str) -> anyhow::Result<String> {
     Ok(envmnt::expand(&key, Some(options)))
 }
 
-async fn on_error(
-    error: poise::FrameworkError<'_, SpiderBot<'_>, CommandError>,
-) -> Result<(), serenity::Error> {
-    match error {
+async fn on_error(error: poise::FrameworkError<'_, SpiderBot<'_>, CommandError>) {
+    let err = match error {
         poise::FrameworkError::Command { ctx, error, .. } => {
             let error_message = match error {
                 CommandError::GifError(GifError::NoGifs | GifError::RestrictedQuery(_)) => {
@@ -144,9 +136,11 @@ async fn on_error(
             let msg = CreateReply::default()
                 .ephemeral(true)
                 .content(error_message);
-            ctx.send(msg).await?;
-            Ok(())
+            ctx.send(msg).await.err()
         }
-        error => poise::builtins::on_error(error).await,
+        error => poise::builtins::on_error(error).await.err(),
+    };
+    if let Some(err) = err {
+        tracing::error!("Error while handling error: {err}");
     }
 }
