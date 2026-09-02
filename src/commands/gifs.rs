@@ -87,7 +87,7 @@ pub(crate) async fn sleep(ctx: Context<'_, '_>) -> Result<(), CommandError> {
 async fn send_gif_message(
     ctx: Context<'_, '_>,
     gif: impl Into<String>,
-) -> Result<(), serenity::Error> {
+) -> Result<(), CommandError> {
     let gif_message = CreateMessage::new()
         .flags(MessageFlags::SUPPRESS_NOTIFICATIONS)
         .content(gif);
