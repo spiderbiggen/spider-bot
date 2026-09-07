@@ -6,7 +6,6 @@ use poise::CreateReply;
 use serenity::all::{
     CreateAllowedMentions, CreateEmbed, Member, Mention, Mentionable, Permissions,
 };
-use std::num::{NonZeroI16, NonZeroU16};
 
 const INITIAL_BALANCE: i64 = 500;
 
@@ -51,7 +50,8 @@ pub(crate) async fn transfer(
     #[description = "Who to send coins to"] member: Member,
     #[description = "Amount of coins to send to another user"]
     #[max = 1000]
-    amount: NonZeroU16,
+    #[min = 1]
+    amount: u16,
 ) -> Result<(), crate::commands::CommandError> {
     if member.user.id == ctx.author().id {
         let reply = CreateReply::default()
@@ -83,7 +83,7 @@ pub(crate) async fn transfer(
             guild_id,
             from_user.user.id.get(),
             member.user.id.get(),
-            i64::from(amount.get()),
+            i64::from(amount),
         )
         .await;
 
@@ -218,7 +218,7 @@ pub(crate) async fn set(
     #[description = "Who to set coins for"] member: Member,
     #[description = "Amount of coins the user should have"]
     #[max = 999_999_999]
-    amount: i32,
+    amount: i64,
 ) -> Result<(), crate::commands::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
@@ -228,7 +228,6 @@ pub(crate) async fn set(
     let guild_id = guild_id.get();
     let user_id = member.user.id.get();
 
-    let amount = i64::from(amount);
     let amount = db
         .upsert_set_user_balance(guild_id, user_id, amount)
         .await?;
@@ -244,8 +243,19 @@ pub(crate) async fn update(
     #[description = "Amount of coins the user should gain/lose"]
     #[min = -500]
     #[max = 500]
-    amount: NonZeroI16,
+    amount: i64,
 ) -> Result<(), crate::commands::CommandError> {
+    if amount == 0 {
+        ctx.send(
+            CreateReply::new()
+                .reply(true)
+                .ephemeral(true)
+                .content("Amount must be non-zero."),
+        )
+        .await?;
+        return Ok(());
+    }
+
     ctx.defer().await?;
     let db = &ctx.data().database;
     let Some(guild_id) = ctx.guild_id() else {
@@ -254,7 +264,6 @@ pub(crate) async fn update(
     let guild_id = guild_id.get();
     let user_id = member.user.id.get();
 
-    let amount = i64::from(amount.get());
     let balance = db
         .upsert_update_user_balance(guild_id, user_id, amount, INITIAL_BALANCE + amount)
         .await?;

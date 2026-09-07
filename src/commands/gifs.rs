@@ -8,7 +8,7 @@ use crate::context::{Context, GifCacheExt};
 use klipy::models::Format;
 use klipy::{Config, Klipy};
 use poise::serenity_prelude as serenity;
-use serenity::all::MessageFlags;
+use serenity::all::{CreateAutocompleteResponse, MessageFlags};
 use serenity::{CreateMessage, Mentionable, User};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ pub(crate) enum GifError {
     NoGifs,
 }
 
-async fn play_autocomplete(ctx: Context<'_, '_>, partial: &str) -> Vec<Cow<'static, str>> {
+async fn play_autocomplete(ctx: Context<'_, '_>, partial: &str) -> CreateAutocompleteResponse {
     play::autocomplete(ctx, partial).await
 }
 
