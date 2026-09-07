@@ -6,6 +6,7 @@ use klipy::Klipy;
 use klipy::models::Format;
 use rand::RngExt;
 use rustrict::CensorStr;
+use serenity::all::{AutocompleteChoice, CreateAutocompleteResponse};
 use std::borrow::Cow;
 use std::fmt::Write;
 use std::sync::Arc;
@@ -88,14 +89,15 @@ pub struct CommandOutput {
 
 // TODO improve autocomplete by checking another service instead of a static list
 #[expect(clippy::unused_async)]
-pub async fn autocomplete(_: Context<'_, '_>, partial: &str) -> Vec<Cow<'static, str>> {
+pub async fn autocomplete(_: Context<'_, '_>, partial: &str) -> CreateAutocompleteResponse {
     let lower_partial = &partial.to_lowercase();
-    GAME_AUTOCOMPLETION
+    let choices = GAME_AUTOCOMPLETION
         .iter()
         .filter(|GameQuery { matches, .. }| matches.iter().any(|s| s.starts_with(lower_partial)))
-        .map(|&GameQuery { name, .. }| Cow::Borrowed(name))
+        .map(|&GameQuery { name, .. }| AutocompleteChoice::new(name, name))
         .take(MAX_AUTOCOMPLETE_RESULTS)
-        .collect()
+        .collect();
+    CreateAutocompleteResponse::new().set_choices(choices)
 }
 
 pub async fn get_command_output(
