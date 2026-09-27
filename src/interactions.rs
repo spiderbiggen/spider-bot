@@ -1,5 +1,5 @@
-use crate::commands::gifs::GifError;
 use crate::context::Context;
+use crate::interactions::gifs::GifError;
 
 pub mod gifs;
 pub mod true_coin;

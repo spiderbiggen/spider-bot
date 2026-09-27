@@ -15,12 +15,12 @@ const INITIAL_BALANCE: i64 = 500;
     guild_only,
     subcommands("balance", "transfer", "leaderboard", "set", "update")
 )]
-pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
+pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::interactions::CommandError> {
     Ok(())
 }
 
 #[poise::command(slash_command, guild_only)]
-pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
+pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::interactions::CommandError> {
     ctx.defer_ephemeral().await?;
 
     let Some(guild_id) = ctx.guild_id() else {
@@ -52,7 +52,7 @@ pub(crate) async fn transfer(
     #[max = 1000]
     #[min = 1]
     amount: u16,
-) -> Result<(), crate::commands::CommandError> {
+) -> Result<(), crate::interactions::CommandError> {
     if member.user.id == ctx.author().id {
         let reply = CreateReply::default()
             .ephemeral(true)
@@ -108,7 +108,7 @@ async fn handle_transfer_error(
     ctx: Context<'_, '_>,
     member: &Member,
     err: BalanceTransactionError,
-) -> Result<(), crate::commands::CommandError> {
+) -> Result<(), crate::interactions::CommandError> {
     let message = match err {
         BalanceTransactionError::Base(err) => return Err(err.into()),
         BalanceTransactionError::SenderUninitialized => {
@@ -136,7 +136,9 @@ struct MemberBalance {
 }
 
 #[poise::command(slash_command, guild_only)]
-pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::commands::CommandError> {
+pub(crate) async fn leaderboard(
+    ctx: Context<'_, '_>,
+) -> Result<(), crate::interactions::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
 
@@ -203,7 +205,7 @@ pub(crate) async fn leaderboard(ctx: Context<'_, '_>) -> Result<(), crate::comma
 #[allow(dead_code)]
 async fn author_is_guild_admin(
     ctx: Context<'_, '_>,
-) -> Result<bool, crate::commands::CommandError> {
+) -> Result<bool, crate::interactions::CommandError> {
     let Some(member) = ctx.author_member().await else {
         return Ok(false);
     };
@@ -219,7 +221,7 @@ pub(crate) async fn set(
     #[description = "Amount of coins the user should have"]
     #[max = 999_999_999]
     amount: i64,
-) -> Result<(), crate::commands::CommandError> {
+) -> Result<(), crate::interactions::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
     let Some(guild_id) = ctx.guild_id() else {
@@ -244,7 +246,7 @@ pub(crate) async fn update(
     #[min = -500]
     #[max = 500]
     amount: i64,
-) -> Result<(), crate::commands::CommandError> {
+) -> Result<(), crate::interactions::CommandError> {
     if amount == 0 {
         ctx.send(
             CreateReply::new()

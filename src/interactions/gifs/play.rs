@@ -1,7 +1,7 @@
 use super::refresh_gif_cache_for_query;
 use crate::cache::{GifCacheReader, GifCacheWriter};
-use crate::commands::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS, get_cached_gif};
 use crate::context::{Context, GifContextExt};
+use crate::interactions::gifs::{GifError, MAX_AUTOCOMPLETE_RESULTS, get_cached_gif};
 use klipy::Klipy;
 use klipy::models::Format;
 use rand::RngExt;

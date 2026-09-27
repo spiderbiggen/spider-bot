@@ -20,8 +20,8 @@ use db::BotDatabase;
 use domain::{Download, DownloadCollection, Subscribed, Subscriber};
 
 use crate::cache::GifCacheWriter;
-use crate::commands::gifs;
 use crate::consts::SHORT_CACHE_LIFETIME;
+use crate::interactions::gifs;
 
 fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
     let start = Instant::now();
