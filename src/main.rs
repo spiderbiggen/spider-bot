@@ -1,8 +1,8 @@
 use crate::background_tasks::{DiscordApi, start_cache_trim, start_gif_updater};
 use crate::cache::{GifCacheReader, GifCacheWriter};
-use crate::commands::CommandError;
-use crate::commands::gifs::GifError;
 use crate::consts::GIF_COUNT;
+use crate::interactions::CommandError;
+use crate::interactions::gifs::GifError;
 use db::{BotDatabase, DatabaseConnection};
 use dotenv::dotenv;
 use klipy::models::{ContentFilter, Format};
@@ -15,9 +15,9 @@ use tracing_subscriber::prelude::*;
 
 mod background_tasks;
 mod cache;
-mod commands;
 mod consts;
 mod context;
+mod interactions;
 mod util;
 
 pub(crate) const BASE_GIF_CONFIG: Config = Config::new()
@@ -72,12 +72,12 @@ async fn main() -> anyhow::Result<()> {
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![
-                commands::version(),
-                commands::gifs::hurry(),
-                commands::gifs::morbin(),
-                commands::gifs::play(),
-                commands::gifs::sleep(),
-                commands::true_coin::coin(),
+                interactions::version(),
+                interactions::gifs::hurry(),
+                interactions::gifs::morbin(),
+                interactions::gifs::play(),
+                interactions::gifs::sleep(),
+                interactions::true_coin::coin(),
             ],
             on_error: |error| Box::pin(async move { on_error(error).await }),
             ..Default::default()

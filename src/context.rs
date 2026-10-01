@@ -1,6 +1,6 @@
 use crate::SpiderBot;
 use crate::cache::{GifCacheReader, GifCacheWriter};
-use crate::commands::CommandError;
+use crate::interactions::CommandError;
 use klipy::Klipy;
 
 pub(crate) type Context<'a, 'klipy_config> =

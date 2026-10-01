@@ -2,9 +2,9 @@ mod play;
 mod sleep;
 
 use crate::cache::{GifCacheReader, GifCacheWriter};
-use crate::commands::CommandError;
 use crate::consts::LONG_CACHE_LIFETIME;
 use crate::context::{Context, GifCacheExt};
+use crate::interactions::CommandError;
 use klipy::models::Format;
 use klipy::{Config, Klipy};
 use poise::serenity_prelude as serenity;
