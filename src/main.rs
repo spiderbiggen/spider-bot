@@ -3,6 +3,7 @@ use crate::cache::{GifCacheReader, GifCacheWriter};
 use crate::consts::GIF_COUNT;
 use crate::interactions::CommandError;
 use crate::interactions::gifs::GifError;
+use anyhow::Context;
 use db::{BotDatabase, DatabaseConnection};
 use dotenv::dotenv;
 use klipy::models::{ContentFilter, Format};
@@ -67,23 +68,29 @@ async fn main() -> anyhow::Result<()> {
     start_gif_updater(bot.klipy.clone(), gif_cache_writer.clone())?;
     start_cache_trim(gif_cache_writer);
 
-    let commands = vec![
-        interactions::version(),
-        interactions::gifs::hurry(),
-        interactions::gifs::morbin(),
-        interactions::gifs::play(),
-        interactions::gifs::sleep(),
-        interactions::true_coin::coin(),
-    ];
-
     let http = Arc::new(DiscordHttp::new(discord_token.clone()));
-    poise::builtins::register_globally(&http, &commands).await?;
+    let app_info = http
+        .get_current_application_info()
+        .await
+        .context("Failed to get current application info")?;
+    http.set_application_id(app_info.id);
 
     let framework = poise::Framework::new(poise::FrameworkOptions {
-        commands,
+        commands: vec![
+            interactions::version(),
+            interactions::gifs::hurry(),
+            interactions::gifs::morbin(),
+            interactions::gifs::play(),
+            interactions::gifs::sleep(),
+            interactions::true_coin::coin(),
+        ],
         on_error: |error| Box::pin(async move { on_error(error).await }),
         ..Default::default()
     });
+    poise::builtins::register_globally(&http, &framework.options().commands)
+        .await
+        .inspect_err(|error| tracing::error!("Failed to register commands globally: {error}"))
+        .context("Failed to register commands globally")?;
     let intents = GatewayIntents::non_privileged();
     let mut client = ClientBuilder::new_with_http(discord_token, http, intents)
         .framework(Box::new(framework))
