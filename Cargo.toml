@@ -40,7 +40,7 @@ dashmap = "6.1.0"
 envmnt = "0.10.4"
 futures = "0.3.21"
 itertools = "0.15.0"
-poise = "0.7.0"
+poise = { git = "https://github.com/serenity-rs/poise", branch = "serenity-next" }
 rand = "0.10.0"
 rustc-hash = "2.1.1"
 rustrict = "0.7.31"
@@ -51,13 +51,13 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { workspace = true }
 
 [dependencies.serenity]
-version = "0.12.5"
+git = "https://github.com/serenity-rs/serenity"
+branch = "next"
 default-features = false
 features = [
     "builder",
     "cache",
     "chrono",
-    "client",
     "gateway",
     "model",
     "http",

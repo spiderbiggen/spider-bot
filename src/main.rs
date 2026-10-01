@@ -8,9 +8,9 @@ use dotenv::dotenv;
 use klipy::models::{ContentFilter, Format};
 use klipy::{Config, Klipy};
 use poise::CreateReply;
-use serenity::all::GatewayIntents;
-use serenity::client::Client as Serenity;
+use serenity::all::{ClientBuilder, GatewayIntents, Http as DiscordHttp, Token};
 use std::env;
+use std::sync::Arc;
 use tracing_subscriber::prelude::*;
 
 mod background_tasks;
@@ -27,11 +27,11 @@ pub(crate) const BASE_GIF_CONFIG: Config = Config::new()
     .per_page(GIF_COUNT);
 
 #[derive(Debug, Clone)]
-struct SpiderBot<'klipy> {
-    gif_cache: GifCacheReader,
-    gif_cache_writer: GifCacheWriter,
-    klipy: Klipy<'klipy>,
-    database: BotDatabase,
+pub(crate) struct SpiderBot {
+    pub(crate) gif_cache: GifCacheReader,
+    pub(crate) gif_cache_writer: GifCacheWriter,
+    pub(crate) klipy: Klipy<'static>,
+    pub(crate) database: BotDatabase,
 }
 
 #[tokio::main]
@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let discord_token: &str = env::var("DISCORD_TOKEN")?.leak();
+    let discord_token = Token::from_env("DISCORD_TOKEN")?;
     let klipy_token: &str = env::var("KLIPY_TOKEN")?.leak();
 
     let anime_url = match resolve_env("ANIME_URL") {
@@ -67,44 +67,40 @@ async fn main() -> anyhow::Result<()> {
     start_gif_updater(bot.klipy.clone(), gif_cache_writer.clone())?;
     start_cache_trim(gif_cache_writer);
 
+    let commands = vec![
+        interactions::version(),
+        interactions::gifs::hurry(),
+        interactions::gifs::morbin(),
+        interactions::gifs::play(),
+        interactions::gifs::sleep(),
+        interactions::true_coin::coin(),
+    ];
+
+    let http = Arc::new(DiscordHttp::new(discord_token.clone()));
+    poise::builtins::register_globally(&http, &commands).await?;
+
+    let framework = poise::Framework::new(poise::FrameworkOptions {
+        commands,
+        on_error: |error| Box::pin(async move { on_error(error).await }),
+        ..Default::default()
+    });
     let intents = GatewayIntents::non_privileged();
-
-    let framework = poise::Framework::builder()
-        .options(poise::FrameworkOptions {
-            commands: vec![
-                interactions::version(),
-                interactions::gifs::hurry(),
-                interactions::gifs::morbin(),
-                interactions::gifs::play(),
-                interactions::gifs::sleep(),
-                interactions::true_coin::coin(),
-            ],
-            on_error: |error| Box::pin(async move { on_error(error).await }),
-            ..Default::default()
-        })
-        .setup(move |ctx, _ready, framework| {
-            Box::pin(async move {
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(bot)
-            })
-        })
-        .build();
-
-    let mut client = Serenity::builder(discord_token, intents)
-        .framework(framework)
+    let mut client = ClientBuilder::new_with_http(discord_token, http, intents)
+        .framework(Box::new(framework))
+        .data(Arc::new(bot))
         .await?;
 
     if let Some(anime_url) = anime_url {
         DiscordApi::from(&client).publish_anime_updates(database, anime_url);
     }
 
-    let shard_manager = client.shard_manager.clone();
+    let shutdown = client.shard_manager.get_shutdown_trigger();
 
     tokio::spawn(async move {
         tokio::signal::ctrl_c()
             .await
             .expect("Could not register ctrl+c handler");
-        shard_manager.shutdown_all().await;
+        shutdown();
     });
 
     // start listening for events by starting a single shard
@@ -123,7 +119,7 @@ fn resolve_env(key: &str) -> anyhow::Result<String> {
     Ok(envmnt::expand(&key, Some(options)))
 }
 
-async fn on_error(error: poise::FrameworkError<'_, SpiderBot<'_>, CommandError>) {
+async fn on_error(error: poise::FrameworkError<'_, SpiderBot, CommandError>) {
     let err = match error {
         poise::FrameworkError::Command { ctx, error, .. } => {
             let error_message = match error {
