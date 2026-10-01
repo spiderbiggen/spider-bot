@@ -17,3 +17,6 @@ prost-types = "0.14.0"
 
 [build-dependencies]
 tonic-prost-build = "0.14.0"
+
+[lints]
+clippy.double_must_use = "allow"
