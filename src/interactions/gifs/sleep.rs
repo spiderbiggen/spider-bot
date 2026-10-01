@@ -22,18 +22,14 @@ pub async fn get_gif(gif_cache: &GifCacheReader) -> Result<Arc<Url>, GifError> {
 #[tracing::instrument(skip_all)]
 pub async fn refresh_sleep_gifs(klipy: &Klipy<'_>, writer: &GifCacheWriter) {
     let date = Utc::now().date_naive();
-    for Season { resolver, range } in SLEEP_GIF_COLLECTION.seasons {
-        if !range.should_cache(date) {
-            continue;
-        }
-        if let Err(error) = refresh_gif_cache_for_resolver(klipy, writer, resolver).await {
-            tracing::error!("Error caching gifs for {}: {error}", resolver.name);
-        }
-    }
-    let resolver = &SLEEP_GIF_COLLECTION.default;
-    if let Err(error) = refresh_gif_cache_for_resolver(klipy, writer, resolver).await {
-        tracing::error!("Error caching gifs for {}: {error}", resolver.name);
-        panic!()
+    for resolver in SLEEP_GIF_COLLECTION
+        .seasons
+        .iter()
+        .filter(|season| season.range.should_cache(date))
+        .map(|season| &season.resolver)
+        .chain(std::iter::once(&SLEEP_GIF_COLLECTION.default))
+    {
+        refresh_gif_cache_for_resolver(klipy, writer, resolver).await;
     }
 }
 
@@ -106,7 +102,17 @@ async fn refresh_gif_cache_for_resolver(
     klipy: &Klipy<'_>,
     writer: &GifCacheWriter,
     resolver: &GifResolver<'_>,
-) -> Result<(), GifError> {
+) {
+    match collect_gif_urls(klipy, resolver).await {
+        Ok(urls) => insert_gif_cache(writer, resolver.name, urls),
+        Err(error) => tracing::error!("Error caching gifs for {}: {error}", resolver.name),
+    }
+}
+
+async fn collect_gif_urls(
+    klipy: &Klipy<'_>,
+    resolver: &GifResolver<'_>,
+) -> Result<Box<[Arc<Url>]>, GifError> {
     let max_capacity = resolver.queries.len() * usize::from(GIF_COUNT);
     let mut gif_collection: FxHashSet<Url> =
         FxHashSet::with_capacity_and_hasher(max_capacity, FxBuildHasher);
@@ -118,13 +124,14 @@ async fn refresh_gif_cache_for_resolver(
                 .filter_map(|gif| gif.into_media(Format::Gif)),
         );
     }
-    let name = resolver.name;
-    let urls: Box<[Arc<Url>]> = gif_collection.into_iter().map(Arc::new).collect();
+    Ok(gif_collection.into_iter().map(Arc::new).collect())
+}
+
+fn insert_gif_cache(writer: &GifCacheWriter, name: &'static str, urls: Box<[Arc<Url>]>) {
     let gif_count = urls.len();
     if writer.insert_with_duration(name, urls, LONG_CACHE_LIFETIME) {
         tracing::info!(gif_count, "Put \"{name}\" gifs into cache");
     }
-    Ok(())
 }
 
 const FROGGERS_RATIO_QUERY: RatioQuery = RatioQuery {
