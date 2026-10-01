@@ -11,14 +11,7 @@ use crate::models::{ContentFilter, Format, Gif, Response};
 pub mod error;
 pub mod models;
 
-// TODO clean this up once more things are stable
-static DEFAULT_CUSTOMER_ID: &str = formatc!(
-    "{:X}",
-    fnv1a_hash_str_128(match option_env!("CARGO_PKG_NAME") {
-        Some(name) => name,
-        None => env!("CARGO_PKG_NAME"),
-    })
-);
+static DEFAULT_CUSTOMER_ID: &str = formatc!("{:X}", fnv1a_hash_str_128(env!("CARGO_PKG_NAME")));
 
 #[derive(Debug, Clone)]
 pub struct Klipy<'config> {
