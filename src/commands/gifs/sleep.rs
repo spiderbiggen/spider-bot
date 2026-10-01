@@ -137,7 +137,7 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
     seasons: &[
         Season {
             range: DateRange::new(
-                day_of_month!(15, Month::October),
+                day_of_month!(1, Month::October),
                 day_of_month!(31, Month::October),
             ),
             resolver: GifResolver {
