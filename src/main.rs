@@ -9,7 +9,7 @@ use dotenv::dotenv;
 use klipy::models::{ContentFilter, Format};
 use klipy::{Config, Klipy};
 use poise::CreateReply;
-use serenity::all::{ClientBuilder, GatewayIntents, Http as DiscordHttp, Token};
+use serenity::all::{Client, ClientBuilder, GatewayIntents, Http as DiscordHttp, Token};
 use std::env;
 use std::sync::Arc;
 use tracing_subscriber::prelude::*;
@@ -37,6 +37,31 @@ pub(crate) struct SpiderBot {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let (discord_token, klipy_token, anime_url) = initialize()?;
+    let (bot, database) = create_application_resources(klipy_token).await?;
+    start_background_tasks(&bot)?;
+    let mut client = create_discord_client(discord_token, bot).await?;
+
+    if let Some(anime_url) = anime_url {
+        DiscordApi::from(&client).publish_anime_updates(database, anime_url);
+    }
+
+    let shutdown = client.shard_manager.get_shutdown_trigger();
+
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Could not register ctrl+c handler");
+        shutdown();
+    });
+
+    // start listening for events by starting a single shard
+    client.start().await?;
+
+    Ok(())
+}
+
+fn initialize() -> anyhow::Result<(Token, &'static str, Option<&'static str>)> {
     let _ = dotenv();
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
@@ -46,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
     let discord_token = Token::from_env("DISCORD_TOKEN")?;
     let klipy_token: &str = env::var("KLIPY_TOKEN")?.leak();
 
-    let anime_url = match resolve_env("ANIME_URL") {
+    let anime_url: Option<&'static str> = match resolve_env("ANIME_URL") {
         Ok(anime_url) => Some(anime_url.leak()),
         Err(error) => {
             tracing::warn!("Failed to resolve ANIME_URL: {error}");
@@ -54,6 +79,12 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    Ok((discord_token, klipy_token, anime_url))
+}
+
+async fn create_application_resources(
+    klipy_token: &'static str,
+) -> anyhow::Result<(SpiderBot, BotDatabase)> {
     let database = db::connect(env!("CARGO_PKG_NAME")).await?;
     database.migrate().await?;
 
@@ -65,9 +96,16 @@ async fn main() -> anyhow::Result<()> {
         database: database.clone(),
     };
 
-    start_gif_updater(bot.klipy.clone(), gif_cache_writer.clone())?;
-    start_cache_trim(gif_cache_writer);
+    Ok((bot, database))
+}
 
+fn start_background_tasks(bot: &SpiderBot) -> anyhow::Result<()> {
+    start_gif_updater(bot.klipy.clone(), bot.gif_cache_writer.clone())?;
+    start_cache_trim(bot.gif_cache_writer.clone());
+    Ok(())
+}
+
+async fn create_discord_client(discord_token: Token, bot: SpiderBot) -> anyhow::Result<Client> {
     let http = Arc::new(DiscordHttp::new(discord_token.clone()));
     let app_info = http
         .get_current_application_info()
@@ -92,28 +130,11 @@ async fn main() -> anyhow::Result<()> {
         .inspect_err(|error| tracing::error!("Failed to register commands globally: {error}"))
         .context("Failed to register commands globally")?;
     let intents = GatewayIntents::non_privileged();
-    let mut client = ClientBuilder::new_with_http(discord_token, http, intents)
+    let client = ClientBuilder::new_with_http(discord_token, http, intents)
         .framework(Box::new(framework))
         .data(Arc::new(bot))
         .await?;
-
-    if let Some(anime_url) = anime_url {
-        DiscordApi::from(&client).publish_anime_updates(database, anime_url);
-    }
-
-    let shutdown = client.shard_manager.get_shutdown_trigger();
-
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Could not register ctrl+c handler");
-        shutdown();
-    });
-
-    // start listening for events by starting a single shard
-    client.start().await?;
-
-    Ok(())
+    Ok(client)
 }
 
 fn resolve_env(key: &str) -> anyhow::Result<String> {
