@@ -4,7 +4,7 @@ use futures::StreamExt;
 use itertools::Itertools;
 use poise::CreateReply;
 use serenity::all::{
-    CreateAllowedMentions, CreateEmbed, Member, Mention, Mentionable, Permissions, UserId,
+    CreateAllowedMentions, CreateEmbed, GuildId, Member, Mention, Mentionable, Permissions, UserId,
 };
 
 const INITIAL_BALANCE: i64 = 500;
@@ -150,7 +150,34 @@ pub(crate) async fn leaderboard(ctx: Context<'_>) -> Result<(), crate::interacti
         return Ok(());
     }
 
-    let member_balances: Vec<_> = futures::stream::iter(users)
+    let member_balances = collect_leaderboard_members(ctx, guild, users).await;
+
+    if member_balances.is_empty() {
+        ctx.say("There are no users in the leaderboard.").await?;
+        return Ok(());
+    }
+
+    let description = format_leaderboard_description(&member_balances);
+
+    let embed = CreateEmbed::new()
+        .title("🪙 True Coin Leaderboard")
+        .description(description)
+        .color(0xFF_D7_00);
+
+    // Empty allowed mentions to avoid mentioning everyone in the server.
+    let reply = CreateReply::default()
+        .embed(embed)
+        .allowed_mentions(CreateAllowedMentions::new());
+    ctx.send(reply).await?;
+    Ok(())
+}
+
+async fn collect_leaderboard_members(
+    ctx: Context<'_>,
+    guild: GuildId,
+    users: Vec<domain::UserBalance>,
+) -> Vec<MemberBalance> {
+    futures::stream::iter(users)
         .map(async |user_balance| {
             let member = guild
                 .member(&ctx, UserId::new(user_balance.user_id))
@@ -168,14 +195,11 @@ pub(crate) async fn leaderboard(ctx: Context<'_>) -> Result<(), crate::interacti
         .buffered(8)
         .filter_map(futures::future::ready)
         .collect()
-        .await;
+        .await
+}
 
-    if member_balances.is_empty() {
-        ctx.say("There are no users in the leaderboard.").await?;
-        return Ok(());
-    }
-
-    let description = member_balances
+fn format_leaderboard_description(member_balances: &[MemberBalance]) -> String {
+    member_balances
         .iter()
         .take(20)
         .enumerate()
@@ -188,19 +212,7 @@ pub(crate) async fn leaderboard(ctx: Context<'_>) -> Result<(), crate::interacti
             };
             format!("{rank} **{username}** — {}", format_balance(*balance))
         })
-        .join("\n");
-
-    let embed = CreateEmbed::new()
-        .title("🪙 True Coin Leaderboard")
-        .description(description)
-        .color(0xFF_D7_00);
-
-    // Empty allowed mentions to avoid mentioning everyone in the server.
-    let reply = CreateReply::default()
-        .embed(embed)
-        .allowed_mentions(CreateAllowedMentions::new());
-    ctx.send(reply).await?;
-    Ok(())
+        .join("\n")
 }
 
 #[allow(dead_code)]
