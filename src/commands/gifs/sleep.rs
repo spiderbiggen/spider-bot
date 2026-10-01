@@ -143,7 +143,7 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
             resolver: GifResolver {
                 name: "halloween sleep",
                 ratio_override: Some(FROGGERS_RATIO_QUERY),
-                queries: &["halloween_sleep", "spooky_sleep", "horror_sleep"],
+                queries: &["halloween sleep", "spooky sleep", "horror sleep"],
             },
         },
         Season {
