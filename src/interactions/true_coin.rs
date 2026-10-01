@@ -4,7 +4,7 @@ use futures::StreamExt;
 use itertools::Itertools;
 use poise::CreateReply;
 use serenity::all::{
-    CreateAllowedMentions, CreateEmbed, Member, Mention, Mentionable, Permissions,
+    CreateAllowedMentions, CreateEmbed, Member, Mention, Mentionable, Permissions, UserId,
 };
 
 const INITIAL_BALANCE: i64 = 500;
@@ -15,12 +15,12 @@ const INITIAL_BALANCE: i64 = 500;
     guild_only,
     subcommands("balance", "transfer", "leaderboard", "set", "update")
 )]
-pub(crate) async fn coin(_: Context<'_, '_>) -> Result<(), crate::interactions::CommandError> {
+pub(crate) async fn coin(_: Context<'_>) -> Result<(), crate::interactions::CommandError> {
     Ok(())
 }
 
 #[poise::command(slash_command, guild_only)]
-pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::interactions::CommandError> {
+pub(crate) async fn balance(ctx: Context<'_>) -> Result<(), crate::interactions::CommandError> {
     ctx.defer_ephemeral().await?;
 
     let Some(guild_id) = ctx.guild_id() else {
@@ -46,7 +46,7 @@ pub(crate) async fn balance(ctx: Context<'_, '_>) -> Result<(), crate::interacti
 
 #[poise::command(slash_command, guild_only)]
 pub(crate) async fn transfer(
-    ctx: Context<'_, '_>,
+    ctx: Context<'_>,
     #[description = "Who to send coins to"] member: Member,
     #[description = "Amount of coins to send to another user"]
     #[max = 1000]
@@ -61,7 +61,7 @@ pub(crate) async fn transfer(
         return Ok(());
     }
 
-    if member.user.bot {
+    if member.user.bot() {
         let reply = CreateReply::default()
             .ephemeral(true)
             .content("Bot users cannot handle the true power of coins.");
@@ -105,7 +105,7 @@ pub(crate) async fn transfer(
 }
 
 async fn handle_transfer_error(
-    ctx: Context<'_, '_>,
+    ctx: Context<'_>,
     member: &Member,
     err: BalanceTransactionError,
 ) -> Result<(), crate::interactions::CommandError> {
@@ -136,9 +136,7 @@ struct MemberBalance {
 }
 
 #[poise::command(slash_command, guild_only)]
-pub(crate) async fn leaderboard(
-    ctx: Context<'_, '_>,
-) -> Result<(), crate::interactions::CommandError> {
+pub(crate) async fn leaderboard(ctx: Context<'_>) -> Result<(), crate::interactions::CommandError> {
     ctx.defer().await?;
     let db = &ctx.data().database;
 
@@ -154,8 +152,11 @@ pub(crate) async fn leaderboard(
 
     let member_balances: Vec<_> = futures::stream::iter(users)
         .map(async |user_balance| {
-            let member = guild.member(&ctx, user_balance.user_id).await.ok()?;
-            if member.user.bot {
+            let member = guild
+                .member(&ctx, UserId::new(user_balance.user_id))
+                .await
+                .ok()?;
+            if member.user.bot() {
                 return None;
             }
 
@@ -204,19 +205,19 @@ pub(crate) async fn leaderboard(
 
 #[allow(dead_code)]
 async fn author_is_guild_admin(
-    ctx: Context<'_, '_>,
+    ctx: Context<'_>,
 ) -> Result<bool, crate::interactions::CommandError> {
     let Some(member) = ctx.author_member().await else {
         return Ok(false);
     };
-    let allowed = ctx.framework().options.owners.contains(&member.user.id)
+    let allowed = ctx.framework().options().owners.contains(&member.user.id)
         || member.permissions.is_some_and(Permissions::administrator);
     Ok(allowed)
 }
 
 #[poise::command(slash_command, check = "author_is_guild_admin")]
 pub(crate) async fn set(
-    ctx: Context<'_, '_>,
+    ctx: Context<'_>,
     #[description = "Who to set coins for"] member: Member,
     #[description = "Amount of coins the user should have"]
     #[max = 999_999_999]
@@ -240,7 +241,7 @@ pub(crate) async fn set(
 
 #[poise::command(slash_command, check = "author_is_guild_admin")]
 pub(crate) async fn update(
-    ctx: Context<'_, '_>,
+    ctx: Context<'_>,
     #[description = "Who to update coins for"] member: Member,
     #[description = "Amount of coins the user should gain/lose"]
     #[min = -500]

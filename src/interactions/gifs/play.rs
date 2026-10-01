@@ -89,9 +89,9 @@ pub struct CommandOutput {
 
 // TODO improve autocomplete by checking another service instead of a static list
 #[expect(clippy::unused_async)]
-pub async fn autocomplete(_: Context<'_, '_>, partial: &str) -> CreateAutocompleteResponse {
+pub async fn autocomplete<'a>(_: Context<'_>, partial: &'a str) -> CreateAutocompleteResponse<'a> {
     let lower_partial = &partial.to_lowercase();
-    let choices = GAME_AUTOCOMPLETION
+    let choices: Vec<_> = GAME_AUTOCOMPLETION
         .iter()
         .filter(|GameQuery { matches, .. }| matches.iter().any(|s| s.starts_with(lower_partial)))
         .map(|&GameQuery { name, .. }| AutocompleteChoice::new(name, name))
@@ -101,12 +101,12 @@ pub async fn autocomplete(_: Context<'_, '_>, partial: &str) -> CreateAutocomple
 }
 
 pub async fn get_command_output(
-    context: &impl GifContextExt<'_>,
+    context: &impl GifContextExt,
     mention: &str,
-    game: Option<String>,
+    game: Option<&str>,
 ) -> Result<CommandOutput, GifError> {
     let (klipy, gif_cache, gif_cache_writer) = context.gif_context();
-    let gif = match &game {
+    let gif = match game {
         None => get_cached_gif(gif_cache, PLAY_FALLBACK)?,
         Some(game) => get_game_gif(klipy, gif_cache, gif_cache_writer, game).await?,
     };

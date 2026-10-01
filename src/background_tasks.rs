@@ -5,14 +5,12 @@ use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use klipy::Klipy;
 use serenity::Client as Serenity;
-use serenity::all::{CacheHttp, CreateMessage, Message, UserId};
-use serenity::builder::{Builder, CreateEmbed};
+use serenity::all::{CacheHttp, CreateEmbed, CreateMessage, Message, UserId};
 use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::ChannelId;
 use tokio::sync::mpsc::{Receiver, channel};
-use tokio::task::JoinSet;
 use tokio::time::{Instant, Interval, interval_at};
 use tracing::instrument;
 
@@ -105,23 +103,10 @@ impl DiscordApi {
 
         let channel_ids = channel_ids(&message.subscribers);
         tracing::info!("Notifying {} channels", channel_ids.len());
-        let set: JoinSet<()> = channel_ids
-            .map(|channel_id| self.send_embed(channel_id, embed.clone()))
-            .collect();
-        set.join_all().await;
-    }
-
-    fn send_embed(
-        &self,
-        channel_id: MessageChannelId,
-        embed: CreateEmbed,
-    ) -> impl Future<Output = ()> + 'static {
-        let http = Arc::clone(&self.0);
-        let cache = Arc::clone(&self.1);
-        async move {
-            if let Err(err) = channel_id.send_embed(http, embed).await {
+        for channel_id in channel_ids {
+            if let Err(err) = channel_id.send_embed(&self.0, embed.clone()).await {
                 tracing::error!(
-                    channel_id = channel_id.format(&cache),
+                    channel_id = channel_id.format(&self.1),
                     "Failed to send embed, {err}",
                 );
             }
@@ -136,40 +121,31 @@ enum MessageChannelId {
 }
 
 impl MessageChannelId {
-    // This is temporarily boxed until https://github.com/serenity-rs/serenity/pull/3601 is released
-    // and poise is updated as well
     async fn send_message(
         self,
         cache_http: impl CacheHttp,
-        builder: CreateMessage,
-    ) -> Result<Message, Box<serenity::Error>> {
+        builder: CreateMessage<'_>,
+    ) -> Result<Message, serenity::Error> {
         match self {
-            MessageChannelId::User(id) => id.direct_message(cache_http, builder).await,
-            MessageChannelId::Guild(guild_id, channel_id) => {
-                builder
-                    .execute(cache_http, (channel_id, Some(guild_id)))
-                    .await
+            MessageChannelId::User(id) => id.direct_message(&cache_http, builder).await,
+            MessageChannelId::Guild(_guild_id, channel_id) => {
+                builder.execute(cache_http.http(), channel_id.into()).await
             }
         }
-        .map_err(Box::new)
     }
 
-    // This is temporarily boxed until https://github.com/serenity-rs/serenity/pull/3601 is released
-    // and poise is updated as well
     async fn send_embed(
         self,
         cache_http: impl CacheHttp,
-        embed: CreateEmbed,
-    ) -> Result<Message, Box<serenity::Error>> {
+        embed: CreateEmbed<'_>,
+    ) -> Result<Message, serenity::Error> {
         self.send_message(cache_http, CreateMessage::new().embed(embed))
             .await
     }
 
     fn format(self, cache: &Cache) -> String {
         match self {
-            MessageChannelId::User(id) => cache
-                .user(id)
-                .map_or_else(|| id.to_string(), |s| s.name.clone()),
+            MessageChannelId::User(id) => id.to_string(),
             MessageChannelId::Guild(guild_id, channel_id) => {
                 let Some(guild) = cache.guild(guild_id) else {
                     return format!("{guild_id} #{channel_id}");
@@ -177,7 +153,7 @@ impl MessageChannelId {
                 let Some(channel) = guild.channels.get(&channel_id) else {
                     return format!("{} #{channel_id}", guild.name);
                 };
-                format!("{} #{}", guild.name, channel.name)
+                format!("{} #{}", guild.name, channel.base.name)
             }
         }
     }
@@ -201,10 +177,13 @@ where
 
 fn channel_ids(subscribers: &[Subscriber]) -> impl ExactSizeIterator<Item = MessageChannelId> + '_ {
     subscribers.iter().map(|&s| match s {
-        Subscriber::User(id) => MessageChannelId::User(id.into()),
+        Subscriber::User(id) => MessageChannelId::User(UserId::new(id.get())),
         Subscriber::Channel {
             guild_id,
             channel_id,
-        } => MessageChannelId::Guild(guild_id.into(), channel_id.into()),
+        } => MessageChannelId::Guild(
+            GuildId::new(guild_id.get()),
+            ChannelId::new(channel_id.get()),
+        ),
     })
 }
