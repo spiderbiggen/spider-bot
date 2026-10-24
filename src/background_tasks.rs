@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use klipy::Klipy;
 use serenity::Client as Serenity;
-use serenity::all::{CacheHttp, CreateEmbed, CreateMessage, Message, UserId};
+use serenity::all::{CacheHttp, CreateEmbed, CreateMessage, Message, Timestamp, UserId};
 use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
@@ -96,9 +96,17 @@ impl DiscordApi {
         let title = format!("{} {}", message.content.title, message.content.variant);
         tracing::Span::current().record("title", &title);
 
+        let timestamp = match Timestamp::from_millis(message.content.created_at.timestamp_millis())
+        {
+            Ok(timestamp) => timestamp,
+            Err(err) => {
+                tracing::error!("Failed to create timestamp, {err}");
+                return;
+            }
+        };
         let embed = CreateEmbed::new()
             .title(title)
-            .timestamp(message.content.created_at)
+            .timestamp(timestamp)
             .fields(download_fields(message.content.downloads));
 
         let channel_ids = channel_ids(&message.subscribers);
