@@ -1,9 +1,9 @@
 //! Wire format of the anime service's `download` server-sent events.
 
 use domain::DownloadVariant;
-use serde::Deserialize;
-use serde::de::IgnoredAny;
+use serde::{Deserialize, Deserializer};
 use std::num::TryFromIntError;
+use url::Url;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -19,10 +19,35 @@ pub struct DownloadCollection {
     pub created_at: jiff::Timestamp,
     pub updated_at: jiff::Timestamp,
     pub downloads: Vec<Download>,
-    /// Show metadata matched by the service. Accepted but not used yet.
+    /// Show metadata matched by the service. Purely cosmetic, so a malformed value is dropped
+    /// instead of failing the whole message.
+    #[serde(default, deserialize_with = "lenient_show")]
+    pub show: Option<Show>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Show {
+    pub tmdb_id: u32,
     #[serde(default)]
-    #[allow(dead_code)]
-    show: Option<IgnoredAny>,
+    pub tvdb_id: Option<u32>,
+    pub name: String,
+    #[serde(default)]
+    pub overview: Option<String>,
+    #[serde(default)]
+    pub poster_url: Option<String>,
+    #[serde(default)]
+    pub backdrop_url: Option<String>,
+}
+
+fn lenient_show<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Show>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| match serde_json::from_value(value) {
+        Ok(show) => Some(show),
+        Err(err) => {
+            tracing::warn!("Ignoring malformed show metadata: {err}");
+            None
+        }
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,7 +92,37 @@ impl TryFrom<DownloadCollection> for domain::DownloadCollection {
                 .into_iter()
                 .map(domain::Download::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
+            show: value.show.map(Into::into),
         })
+    }
+}
+
+impl From<Show> for domain::Show {
+    fn from(value: Show) -> Self {
+        Self {
+            tmdb_id: value.tmdb_id,
+            tvdb_id: value.tvdb_id,
+            name: value.name,
+            overview: non_empty(value.overview),
+            poster_url: valid_url("poster_url", value.poster_url),
+            backdrop_url: valid_url("backdrop_url", value.backdrop_url),
+        }
+    }
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
+}
+
+/// Discord rejects an embed with an invalid image URL, so only pass on http(s) URLs.
+fn valid_url(field: &str, value: Option<String>) -> Option<String> {
+    let value = non_empty(value)?;
+    match Url::parse(&value) {
+        Ok(url) if matches!(url.scheme(), "http" | "https") => Some(value),
+        _ => {
+            tracing::warn!("Ignoring invalid show {field}: {value:?}");
+            None
+        }
     }
 }
 
@@ -151,6 +206,7 @@ mod tests {
                 created_at: ts("2026-11-20T16:02:24Z"),
                 updated_at: ts("2026-11-20T16:02:28Z"),
                 downloads: expected_downloads(),
+                show: None,
             }
         );
     }
@@ -206,6 +262,66 @@ mod tests {
             "updated_at":"2026-11-20T16:02:28Z","downloads":{DOWNLOADS},"show":{{"tmdb_id":1,"name":"Show","overview":""}}}}"#
         );
         assert_eq!(parse(&minimal_show).title, "Show");
+    }
+
+    fn movie_json(show: &str) -> String {
+        format!(
+            r#"{{"title":"Show","variant":"movie","created_at":"2026-11-20T16:02:24Z",
+            "updated_at":"2026-11-20T16:02:28Z","downloads":{DOWNLOADS},"show":{show}}}"#
+        )
+    }
+
+    #[test]
+    fn show_is_converted() {
+        let show = parse(&movie_json(
+            r#"{"tmdb_id":1,"tvdb_id":2,"name":"Show","overview":"About","poster_url":"https://p/x.jpg","backdrop_url":"https://b/x.jpg"}"#,
+        ))
+        .show;
+        assert_eq!(
+            show,
+            Some(domain::Show {
+                tmdb_id: 1,
+                tvdb_id: Some(2),
+                name: "Show".into(),
+                overview: Some("About".into()),
+                poster_url: Some("https://p/x.jpg".into()),
+                backdrop_url: Some("https://b/x.jpg".into()),
+            })
+        );
+    }
+
+    #[test]
+    fn show_treats_empty_values_as_absent() {
+        let show = parse(&movie_json(
+            r#"{"tmdb_id":1,"name":"Show","overview":"  ","poster_url":"","backdrop_url":null}"#,
+        ))
+        .show
+        .unwrap();
+        assert_eq!(show.tvdb_id, None);
+        assert_eq!(show.overview, None);
+        assert_eq!(show.poster_url, None);
+        assert_eq!(show.backdrop_url, None);
+    }
+
+    #[test]
+    fn show_drops_invalid_urls_but_keeps_the_rest() {
+        let show = parse(&movie_json(
+            r#"{"tmdb_id":1,"name":"Show","overview":"About","poster_url":"not a url","backdrop_url":"ftp://b/x.jpg"}"#,
+        ))
+        .show
+        .unwrap();
+        assert_eq!(show.overview.as_deref(), Some("About"));
+        assert_eq!(show.poster_url, None);
+        assert_eq!(show.backdrop_url, None);
+    }
+
+    #[test]
+    fn malformed_show_does_not_fail_the_message() {
+        for show in [r#"{"name":5}"#, r#""text""#, "null", "[]"] {
+            let collection = parse(&movie_json(show));
+            assert_eq!(collection.show, None, "{show}");
+            assert_eq!(collection.title, "Show");
+        }
     }
 
     #[test]

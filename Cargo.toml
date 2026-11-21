@@ -64,6 +64,9 @@ features = [
     "rustls_backend"
 ]
 
+[dev-dependencies]
+serde_json = "1"
+
 [profile.dev.package.sqlx-macros]
 opt-level = 3
 
