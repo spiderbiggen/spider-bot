@@ -34,10 +34,6 @@ jobs:
     name: stable / clippy
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install protoc
-        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
-        with:
-          tool: protoc
       - name: Install Rust toolchain
         # Reads the version and components from rust-toolchain.toml
         run: rustup toolchain install --profile minimal
@@ -56,10 +52,6 @@ jobs:
     name: ${{ matrix.os }} / stable / test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install protoc
-        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
-        with:
-          tool: protoc
       - name: Install Rust toolchain
         # Reads the version and components from rust-toolchain.toml
         run: rustup toolchain install --profile minimal
