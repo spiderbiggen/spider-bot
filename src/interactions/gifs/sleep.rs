@@ -3,8 +3,7 @@ use crate::consts::{GIF_COUNT, LONG_CACHE_LIFETIME};
 use crate::day_of_month;
 use crate::interactions::gifs::{GifError, get_cached_gif};
 use crate::util::{DateRange, DayOfMonth};
-use chrono::Utc;
-use chrono::{Month, NaiveDate};
+use jiff::{Timestamp, civil::Date};
 use klipy::Klipy;
 use klipy::models::Format;
 use rand::RngExt;
@@ -15,13 +14,13 @@ use url::Url;
 
 #[instrument(skip_all, err)]
 pub async fn get_gif(gif_cache: &GifCacheReader) -> Result<Arc<Url>, GifError> {
-    let date = Utc::now().date_naive();
+    let date = Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date();
     SLEEP_GIF_COLLECTION.current(date).get_gif(gif_cache).await
 }
 
 #[tracing::instrument(skip_all)]
 pub async fn refresh_sleep_gifs(klipy: &Klipy<'_>, writer: &GifCacheWriter) {
-    let date = Utc::now().date_naive();
+    let date = Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date();
     for resolver in SLEEP_GIF_COLLECTION
         .seasons
         .iter()
@@ -64,7 +63,7 @@ type CollectionData<'a> = &'a [&'a str];
 impl<'gifs> GifCollection<'gifs> {
     #[must_use]
     #[instrument(skip_all)]
-    fn current(&self, date: NaiveDate) -> &GifResolver<'gifs> {
+    fn current(&self, date: Date) -> &GifResolver<'gifs> {
         let season = self.seasons.iter().find(|s| s.range.contains(date));
         match season {
             None => &self.default,
@@ -143,10 +142,7 @@ const FROGGERS_RATIO_QUERY: RatioQuery = RatioQuery {
 static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
     seasons: &[
         Season {
-            range: DateRange::new(
-                day_of_month!(1, Month::October),
-                day_of_month!(31, Month::October),
-            ),
+            range: DateRange::new(day_of_month!(1, 10), day_of_month!(31, 10)),
             resolver: GifResolver {
                 name: "halloween sleep",
                 ratio_override: Some(FROGGERS_RATIO_QUERY),
@@ -154,10 +150,7 @@ static SLEEP_GIF_COLLECTION: &GifCollection = &GifCollection {
             },
         },
         Season {
-            range: DateRange::new(
-                day_of_month!(2, Month::April),
-                day_of_month!(6, Month::April),
-            ),
+            range: DateRange::new(day_of_month!(2, 4), day_of_month!(6, 4)),
             resolver: GifResolver {
                 name: "easter sleep",
                 ratio_override: Some(FROGGERS_RATIO_QUERY),
@@ -261,14 +254,14 @@ mod test {
             for Season { range, .. } in SLEEP_GIF_COLLECTION.seasons {
                 let start = range.start.adjust_for_leap_year(leap_year);
                 assert!(
-                    start.to_naive_date(year).is_some(),
+                    start.to_date(year).is_some(),
                     "invalid start date: {year}-{:02}-{:02}",
                     start.month_num(),
                     start.day()
                 );
                 let end = range.end.adjust_for_leap_year(leap_year);
                 assert!(
-                    end.to_naive_date(year).is_some(),
+                    end.to_date(year).is_some(),
                     "invalid end date: {year}-{:02}-{:02}",
                     end.month_num(),
                     end.day()

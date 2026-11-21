@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use std::fmt::Display;
 use std::num::NonZeroU64;
 use std::ops::RangeInclusive;
@@ -13,7 +13,7 @@ pub struct Episode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Download {
-    pub published_date: DateTime<Utc>,
+    pub published_date: Timestamp,
     pub resolution: u16,
     pub comments: String,
     pub torrent: String,
@@ -24,8 +24,8 @@ pub struct Download {
 pub struct DownloadCollection {
     pub title: String,
     pub variant: DownloadVariant,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
     pub downloads: Vec<Download>,
 }
 

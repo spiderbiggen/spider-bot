@@ -1,8 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::anyhow;
-use chrono::{DateTime, Utc};
+use jiff::{Timestamp as JiffTimestamp, ToSpan};
 use klipy::Klipy;
 use serenity::Client as Serenity;
 use serenity::all::{CacheHttp, CreateEmbed, CreateMessage, Message, Timestamp, UserId};
@@ -22,13 +21,13 @@ use crate::consts::SHORT_CACHE_LIFETIME;
 use crate::interactions::gifs;
 
 fn interval_at_previous_period(period: Duration) -> anyhow::Result<Interval> {
+    anyhow::ensure!(
+        !period.is_zero() && period.subsec_nanos() == 0,
+        "interval period must be a positive whole number of seconds"
+    );
     let start = Instant::now();
-    let now: DateTime<Utc> = Utc::now();
-    let seconds = u64::try_from(now.timestamp())?;
-    let sub_seconds = seconds % period.as_secs();
-    let minute = DateTime::from_timestamp(i64::try_from(seconds - sub_seconds)?, 0)
-        .ok_or(anyhow!("failed to create a new date time"))?;
-    let offset = (now - minute).to_std()?;
+    let seconds = u64::try_from(JiffTimestamp::now().as_second())?;
+    let offset = Duration::from_secs(seconds % period.as_secs());
     let best_effort_start = start.checked_sub(offset).unwrap_or(start);
     Ok(interval_at(best_effort_start, period))
 }
@@ -37,7 +36,7 @@ pub(crate) fn start_gif_updater(
     klipy: Klipy<'static>,
     gif_cache_writer: GifCacheWriter,
 ) -> anyhow::Result<()> {
-    let mut interval = interval_at_previous_period(Duration::from_hours(6))?;
+    let mut interval = interval_at_previous_period(Duration::try_from(6.hours())?)?;
     tokio::spawn(async move {
         loop {
             interval.tick().await;
@@ -96,8 +95,7 @@ impl DiscordApi {
         let title = format!("{} {}", message.content.title, message.content.variant);
         tracing::Span::current().record("title", &title);
 
-        let timestamp = match Timestamp::from_millis(message.content.created_at.timestamp_millis())
-        {
+        let timestamp = match Timestamp::from_millis(message.content.created_at.as_millisecond()) {
             Ok(timestamp) => timestamp,
             Err(err) => {
                 tracing::error!("Failed to create timestamp, {err}");
