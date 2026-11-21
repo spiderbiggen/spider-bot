@@ -2416,7 +2416,7 @@ dependencies = [
 
 [[package]]
 name = "spider-bot"
-version = "0.4.13"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "dashmap",
