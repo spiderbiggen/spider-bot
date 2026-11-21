@@ -14,13 +14,17 @@ use url::Url;
 
 #[instrument(skip_all, err)]
 pub async fn get_gif(gif_cache: &GifCacheReader) -> Result<Arc<Url>, GifError> {
-    let date = Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date();
+    let date = Timestamp::now()
+        .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+        .date();
     SLEEP_GIF_COLLECTION.current(date).get_gif(gif_cache).await
 }
 
 #[tracing::instrument(skip_all)]
 pub async fn refresh_sleep_gifs(klipy: &Klipy<'_>, writer: &GifCacheWriter) {
-    let date = Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date();
+    let date = Timestamp::now()
+        .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+        .date();
     for resolver in SLEEP_GIF_COLLECTION
         .seasons
         .iter()
