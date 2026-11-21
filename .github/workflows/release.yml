@@ -1,4 +1,4 @@
-name: Deployment (Cross)
+name: Release
 
 on:
   push:
@@ -155,33 +155,15 @@ jobs:
           body: ${{ steps.changelog.outputs.changes }}
           token: ${{ github.token }}
 
-#  deploy:
-#    needs: publish
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: Get Deployment API Token
-#        id: token
-#        uses: fjogeleit/http-request-action@main
-#        with:
-#          url: ${{secrets.DEPLOY_AUTH_URL}}
-#          method: 'POST'
-#          timeout: 30000
-#          data: >-
-#            {
-#              "grant_type":"password",
-#              "prompt":"none",
-#              "client_id": "${{secrets.DEPLOY_CLIENT_ID}}",
-#              "scope": "openid kube",
-#              "username": "${{secrets.DEPLOY_USERNAME}}",
-#              "password": "${{secrets.DEPLOY_PASSWORD}}"
-#            }
-#          contentType: "application/x-www-form-urlencoded"
-#
-#      - name: Update
-#        id: refresh
-#        uses: fjogeleit/http-request-action@main
-#        with:
-#          url: "${{secrets.DEPLOY_URL}}?image=${{needs.publish.outputs.tag}}"
-#          method: 'PATCH'
-#          timeout: 30000
-#          bearerToken: ${{ fromJson(steps.token.outputs.response).access_token }}
+  deploy:
+    needs: publish
+    # Skip pre-releases (v1.2.3-rc.1); `latest` is only moved for stable tags.
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Trigger Portainer redeploy
+        env:
+          PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+        run: curl --fail --silent --show-error --retry 3 --max-time 60 -X POST "$PORTAINER_WEBHOOK_URL"
