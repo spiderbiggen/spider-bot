@@ -21,7 +21,7 @@ single_match_else = "allow"
 workspace = true
 
 [workspace.dependencies]
-jiff = "0.2.38"
+jiff = "1.0.0"
 thiserror = "2.0.0"
 tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "signal", "time", "sync"] }
 tracing = "0.1.37"
