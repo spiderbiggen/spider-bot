@@ -7,7 +7,7 @@ edition = "2024"
 description = "Discord bot for the 'Turtle Force' discord"
 
 [workspace]
-members = ["db", "domain", "otaku", "proto", "klipy"]
+members = ["db", "domain", "otaku", "klipy"]
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }

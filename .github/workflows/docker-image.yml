@@ -41,11 +41,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Protoc
-        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
-        with:
-          tool: protoc
-
       - name: Install Musl toolchain
         run: |
           sudo apt update
