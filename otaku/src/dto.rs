@@ -32,6 +32,10 @@ pub struct Show {
     pub tvdb_id: Option<u32>,
     pub name: String,
     #[serde(default)]
+    pub romaji_name: Option<String>,
+    #[serde(default)]
+    pub original_name: Option<String>,
+    #[serde(default)]
     pub overview: Option<String>,
     #[serde(default)]
     pub poster_url: Option<String>,
@@ -103,6 +107,8 @@ impl From<Show> for domain::Show {
             tmdb_id: value.tmdb_id,
             tvdb_id: value.tvdb_id,
             name: value.name,
+            romaji_name: non_empty(value.romaji_name),
+            original_name: non_empty(value.original_name),
             overview: non_empty(value.overview),
             poster_url: valid_url("poster_url", value.poster_url),
             backdrop_url: valid_url("backdrop_url", value.backdrop_url),
@@ -274,7 +280,7 @@ mod tests {
     #[test]
     fn show_is_converted() {
         let show = parse(&movie_json(
-            r#"{"tmdb_id":1,"tvdb_id":2,"name":"Show","overview":"About","poster_url":"https://p/x.jpg","backdrop_url":"https://b/x.jpg"}"#,
+            r#"{"tmdb_id":1,"tvdb_id":2,"name":"Show","romaji_name":"Shouu","original_name":"ショー","overview":"About","poster_url":"https://p/x.jpg","backdrop_url":"https://b/x.jpg"}"#,
         ))
         .show;
         assert_eq!(
@@ -283,6 +289,8 @@ mod tests {
                 tmdb_id: 1,
                 tvdb_id: Some(2),
                 name: "Show".into(),
+                romaji_name: Some("Shouu".into()),
+                original_name: Some("ショー".into()),
                 overview: Some("About".into()),
                 poster_url: Some("https://p/x.jpg".into()),
                 backdrop_url: Some("https://b/x.jpg".into()),
@@ -293,11 +301,13 @@ mod tests {
     #[test]
     fn show_treats_empty_values_as_absent() {
         let show = parse(&movie_json(
-            r#"{"tmdb_id":1,"name":"Show","overview":"  ","poster_url":"","backdrop_url":null}"#,
+            r#"{"tmdb_id":1,"name":"Show","romaji_name":"","original_name":" ","overview":"  ","poster_url":"","backdrop_url":null}"#,
         ))
         .show
         .unwrap();
         assert_eq!(show.tvdb_id, None);
+        assert_eq!(show.romaji_name, None);
+        assert_eq!(show.original_name, None);
         assert_eq!(show.overview, None);
         assert_eq!(show.poster_url, None);
         assert_eq!(show.backdrop_url, None);

@@ -37,6 +37,10 @@ pub struct Show {
     pub tmdb_id: u32,
     pub tvdb_id: Option<u32>,
     pub name: String,
+    /// The name romanized, when the service knows it.
+    pub romaji_name: Option<String>,
+    /// The name in the original language, when the service knows it.
+    pub original_name: Option<String>,
     pub overview: Option<String>,
     pub poster_url: Option<String>,
     pub backdrop_url: Option<String>,

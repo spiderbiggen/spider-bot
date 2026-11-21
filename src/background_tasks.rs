@@ -278,6 +278,8 @@ mod embed_tests {
             tmdb_id: 1,
             tvdb_id: None,
             name: "Show Name".into(),
+            romaji_name: None,
+            original_name: None,
             overview: Some("A short overview.".into()),
             poster_url: Some("https://p/x.jpg".into()),
             backdrop_url: Some("https://b/x.jpg".into()),
