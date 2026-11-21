@@ -1687,6 +1687,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -2432,6 +2433,7 @@ dependencies = [
  "rand",
  "rustc-hash 2.1.3",
  "rustrict",
+ "serde_json",
  "serenity",
  "thiserror",
  "tokio",

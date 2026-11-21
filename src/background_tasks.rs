@@ -4,7 +4,9 @@ use std::time::Duration;
 use jiff::{Timestamp as JiffTimestamp, ToSpan};
 use klipy::Klipy;
 use serenity::Client as Serenity;
-use serenity::all::{CacheHttp, CreateEmbed, CreateMessage, Message, Timestamp, UserId};
+use serenity::all::{
+    CacheHttp, CreateEmbed, CreateEmbedFooter, CreateMessage, Message, Timestamp, UserId,
+};
 use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
@@ -92,20 +94,13 @@ impl DiscordApi {
 
     #[instrument(skip_all, fields(title))]
     async fn process_downloads_subscription(&self, message: Subscribed<DownloadCollection>) {
-        let title = format!("{} {}", message.content.title, message.content.variant);
-        tracing::Span::current().record("title", &title);
-
-        let timestamp = match Timestamp::from_millis(message.content.created_at.as_millisecond()) {
-            Ok(timestamp) => timestamp,
+        let embed = match build_embed(message.content) {
+            Ok(embed) => embed,
             Err(err) => {
                 tracing::error!("Failed to create timestamp, {err}");
                 return;
             }
         };
-        let embed = CreateEmbed::new()
-            .title(title)
-            .timestamp(timestamp)
-            .fields(download_fields(message.content.downloads));
 
         let channel_ids = channel_ids(&message.subscribers);
         tracing::info!("Notifying {} channels", channel_ids.len());
@@ -165,6 +160,91 @@ impl MessageChannelId {
     }
 }
 
+/// Longest overview shown in an embed: roughly two lines on desktop.
+const MAX_OVERVIEW_CHARS: usize = 120;
+
+fn build_embed(
+    collection: DownloadCollection,
+) -> Result<CreateEmbed<'static>, serenity::model::timestamp::InvalidTimestamp> {
+    let timestamp = Timestamp::from_millis(collection.created_at.as_millisecond())?;
+    let show = collection.show;
+    // The show name is cleaner than the release title, but only exists when the title was matched.
+    let name = show
+        .as_ref()
+        .map(|show| show.name.trim())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&collection.title)
+        .to_owned();
+    let title = format!("{name} {}", collection.variant);
+    tracing::Span::current().record("title", &title);
+
+    let mut embed = CreateEmbed::new()
+        .title(title)
+        .timestamp(timestamp)
+        .fields(download_fields(collection.downloads));
+    if let Some(show) = show {
+        let names = alternative_names(&name, &collection.title, &show);
+        if !names.is_empty() {
+            embed = embed.footer(CreateEmbedFooter::new(names.join(" · ")));
+        }
+        if let Some(overview) = show.overview {
+            embed = embed.description(truncate_overview(&overview));
+        }
+        if let Some(poster_url) = show.poster_url {
+            embed = embed.thumbnail(poster_url, None);
+        }
+        if let Some(backdrop_url) = show.backdrop_url {
+            embed = embed.image(backdrop_url, None);
+        }
+    }
+    Ok(embed)
+}
+
+/// The other names of a show (release title, romaji, original), without repeating the displayed
+/// `name` or each other.
+fn alternative_names<'a>(
+    name: &str,
+    release_title: &'a str,
+    show: &'a domain::Show,
+) -> Vec<&'a str> {
+    let candidates = [
+        Some(release_title),
+        show.romaji_name.as_deref(),
+        show.original_name.as_deref(),
+    ];
+    let mut names: Vec<&str> = Vec::new();
+    for candidate in candidates.into_iter().flatten().map(str::trim) {
+        let is_new = |other: &str| !other.eq_ignore_ascii_case(candidate);
+        if !candidate.is_empty() && is_new(name) && names.iter().all(|other| is_new(other)) {
+            names.push(candidate);
+        }
+    }
+    names
+}
+
+/// Collapses whitespace and cuts the text to [`MAX_OVERVIEW_CHARS`] on a word boundary.
+fn truncate_overview(overview: &str) -> String {
+    let text = overview.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.chars().count() <= MAX_OVERVIEW_CHARS {
+        return text;
+    }
+    // Room for the ellipsis, so the result never exceeds the limit.
+    let end = text
+        .char_indices()
+        .nth(MAX_OVERVIEW_CHARS - 1)
+        .map_or(text.len(), |(index, _)| index);
+    let cut = &text[..end];
+    // Prefer ending at a word boundary, unless that would throw away most of the text.
+    let cut = match cut.rfind(' ') {
+        Some(space) if space >= end / 2 => &cut[..space],
+        _ => cut,
+    };
+    format!(
+        "{}…",
+        cut.trim_end_matches(|c: char| c.is_whitespace() || ",.;:-".contains(c))
+    )
+}
+
 fn download_fields<I>(downloads: I) -> impl IntoIterator<Item = (String, String, bool)>
 where
     I: IntoIterator<Item = Download>,
@@ -192,4 +272,145 @@ fn channel_ids(subscribers: &[Subscriber]) -> impl ExactSizeIterator<Item = Mess
             ChannelId::new(channel_id.get()),
         ),
     })
+}
+
+#[cfg(test)]
+mod embed_tests {
+    use super::*;
+    use domain::{DownloadVariant, Episode, Show};
+    use serde_json::Value;
+
+    fn collection(show: Option<Show>) -> DownloadCollection {
+        DownloadCollection {
+            title: "Release Title S2".into(),
+            variant: DownloadVariant::Episode(Episode {
+                number: 7,
+                decimal: None,
+                version: None,
+                extra: None,
+            }),
+            created_at: "2026-11-20T16:02:24Z".parse().unwrap(),
+            updated_at: "2026-11-20T16:02:28Z".parse().unwrap(),
+            downloads: vec![Download {
+                published_date: "2026-11-20T16:02:28Z".parse().unwrap(),
+                resolution: 1080,
+                comments: "https://nyaa.si/view/1".into(),
+                torrent: "https://nyaa.si/download/1.torrent".into(),
+                file_name: "f".into(),
+            }],
+            show,
+        }
+    }
+
+    fn show() -> Show {
+        Show {
+            tmdb_id: 1,
+            tvdb_id: None,
+            name: "Show Name".into(),
+            romaji_name: None,
+            original_name: None,
+            overview: Some("A short overview.".into()),
+            poster_url: Some("https://p/x.jpg".into()),
+            backdrop_url: Some("https://b/x.jpg".into()),
+        }
+    }
+
+    fn embed(show: Option<Show>) -> Value {
+        serde_json::to_value(build_embed(collection(show)).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn without_show_uses_release_title_and_no_extras() {
+        let embed = embed(None);
+        assert_eq!(embed["title"], "Release Title S2 [Ep 7]");
+        assert_eq!(embed["fields"][0]["name"], "1080p");
+        for key in ["description", "image", "thumbnail", "footer"] {
+            assert!(embed.get(key).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn with_show_adds_name_description_thumbnail_and_image() {
+        let embed = embed(Some(show()));
+        assert_eq!(embed["title"], "Show Name [Ep 7]");
+        assert_eq!(embed["description"], "A short overview.");
+        assert_eq!(embed["thumbnail"]["url"], "https://p/x.jpg");
+        assert_eq!(embed["image"]["url"], "https://b/x.jpg");
+        // Only the release title differs from the show name here.
+        assert_eq!(embed["footer"]["text"], "Release Title S2");
+    }
+
+    #[test]
+    fn footer_lists_distinct_alternative_names() {
+        let embed = embed(Some(Show {
+            romaji_name: Some("Romaji Name".into()),
+            original_name: Some("オリジナル".into()),
+            ..show()
+        }));
+        assert_eq!(
+            embed["footer"]["text"],
+            "Release Title S2 · Romaji Name · オリジナル"
+        );
+    }
+
+    #[test]
+    fn footer_skips_names_equal_to_the_name_or_each_other() {
+        let embed = embed(Some(Show {
+            romaji_name: Some("show name".into()),
+            original_name: Some("Release title s2".into()),
+            ..show()
+        }));
+        // The romaji equals the name and the original equals the release title.
+        assert_eq!(embed["footer"]["text"], "Release Title S2");
+    }
+
+    #[test]
+    fn partial_show_only_adds_what_is_present() {
+        let embed = embed(Some(Show {
+            overview: None,
+            poster_url: None,
+            ..show()
+        }));
+        assert!(embed.get("description").is_none());
+        assert!(embed.get("thumbnail").is_none());
+        assert_eq!(embed["image"]["url"], "https://b/x.jpg");
+    }
+
+    #[test]
+    fn blank_show_name_falls_back_to_release_title() {
+        let embed = embed(Some(Show {
+            name: "  ".into(),
+            ..show()
+        }));
+        assert_eq!(embed["title"], "Release Title S2 [Ep 7]");
+    }
+
+    #[test]
+    fn short_overview_is_kept_and_whitespace_collapsed() {
+        assert_eq!(
+            truncate_overview(
+                "one
+
+two   three"
+            ),
+            "one two three"
+        );
+        let exact = "a".repeat(MAX_OVERVIEW_CHARS);
+        assert_eq!(truncate_overview(&exact), exact);
+    }
+
+    #[test]
+    fn long_overview_is_cut_at_a_word_boundary() {
+        let text = "word ".repeat(40);
+        let result = truncate_overview(&text);
+        assert!(result.ends_with("word…"), "{result}");
+        assert!(result.chars().count() <= MAX_OVERVIEW_CHARS);
+    }
+
+    #[test]
+    fn long_overview_without_spaces_and_multibyte_is_cut_safely() {
+        let result = truncate_overview(&"é".repeat(300));
+        assert_eq!(result.chars().count(), MAX_OVERVIEW_CHARS);
+        assert!(result.ends_with('…'));
+    }
 }
