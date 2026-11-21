@@ -1,39 +1,71 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
+  push:
+    branches: [master]
   pull_request:
 
+# Cancel in-progress runs for the same PR when new commits are pushed.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  test:
+  fmt:
     runs-on: ubuntu-latest
+    name: stable / fmt
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - uses: Swatinem/rust-cache@v2.9.3
-        with:
-          cache-all-crates: true
-
-      - name: Check cargo fmt
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust toolchain
+        # Reads the version and components from rust-toolchain.toml
+        run: rustup toolchain install --profile minimal
+      - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
-      - name: Build tests
-        run: cargo test --no-run --locked
+  clippy:
+    runs-on: ubuntu-latest
+    name: stable / clippy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install protoc
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: protoc
+      - name: Install Rust toolchain
+        # Reads the version and components from rust-toolchain.toml
+        run: rustup toolchain install --profile minimal
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: cargo clippy
+        run: cargo clippy --locked --all-targets --workspace -- -D warnings
 
-      - name: Run tests
-        run: cargo test --no-fail-fast
-
-      - name: Run clippy
-        run: cargo clippy --all-targets --workspace -- -D warnings
+  test:
+    # Also run on arm64: the release workflow builds for it, and C/asm dependencies
+    # (aws-lc-sys, ring) are where architecture-specific breakage tends to appear.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} / stable / test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install protoc
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: protoc
+      - name: Install Rust toolchain
+        # Reads the version and components from rust-toolchain.toml
+        run: rustup toolchain install --profile minimal
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: cargo test
+        run: cargo test --locked --workspace --all-targets --no-fail-fast
+      # --all-targets skips doctests, see https://github.com/rust-lang/cargo/issues/6669
+      - name: cargo test --doc
+        run: cargo test --locked --workspace --doc --no-fail-fast
