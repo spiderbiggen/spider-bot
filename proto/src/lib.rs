@@ -19,7 +19,6 @@ pub mod api {
         #![allow(clippy::derive_partial_eq_without_eq)]
 
         use crate::Error;
-        use chrono::{DateTime, Utc};
         use domain::DownloadVariant;
         use prost_types::Timestamp;
 
@@ -91,10 +90,9 @@ pub mod api {
             }
         }
 
-        #[allow(clippy::cast_sign_loss)]
-        fn from_timestamp(timestamp: Timestamp) -> Result<DateTime<Utc>, Error> {
-            DateTime::from_timestamp(timestamp.seconds, timestamp.nanos as u32)
-                .ok_or(Error::InvalidTimeStamp(timestamp))
+        fn from_timestamp(timestamp: Timestamp) -> Result<jiff::Timestamp, Error> {
+            jiff::Timestamp::new(timestamp.seconds, timestamp.nanos)
+                .map_err(|_| Error::InvalidTimeStamp(timestamp))
         }
     }
 }
