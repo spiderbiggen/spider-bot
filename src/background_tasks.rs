@@ -4,7 +4,9 @@ use std::time::Duration;
 use jiff::{Timestamp as JiffTimestamp, ToSpan};
 use klipy::Klipy;
 use serenity::Client as Serenity;
-use serenity::all::{CacheHttp, CreateEmbed, CreateMessage, Message, Timestamp, UserId};
+use serenity::all::{
+    CacheHttp, CreateEmbed, CreateEmbedFooter, CreateMessage, Message, Timestamp, UserId,
+};
 use serenity::cache::Cache;
 use serenity::http::Http;
 use serenity::model::id::GuildId;
@@ -171,7 +173,8 @@ fn build_embed(
         .as_ref()
         .map(|show| show.name.trim())
         .filter(|name| !name.is_empty())
-        .unwrap_or(&collection.title);
+        .unwrap_or(&collection.title)
+        .to_owned();
     let title = format!("{name} {}", collection.variant);
     tracing::Span::current().record("title", &title);
 
@@ -180,6 +183,10 @@ fn build_embed(
         .timestamp(timestamp)
         .fields(download_fields(collection.downloads));
     if let Some(show) = show {
+        let names = alternative_names(&name, &collection.title, &show);
+        if !names.is_empty() {
+            embed = embed.footer(CreateEmbedFooter::new(names.join(" · ")));
+        }
         if let Some(overview) = show.overview {
             embed = embed.description(truncate_overview(&overview));
         }
@@ -191,6 +198,28 @@ fn build_embed(
         }
     }
     Ok(embed)
+}
+
+/// The other names of a show (release title, romaji, original), without repeating the displayed
+/// `name` or each other.
+fn alternative_names<'a>(
+    name: &str,
+    release_title: &'a str,
+    show: &'a domain::Show,
+) -> Vec<&'a str> {
+    let candidates = [
+        Some(release_title),
+        show.romaji_name.as_deref(),
+        show.original_name.as_deref(),
+    ];
+    let mut names: Vec<&str> = Vec::new();
+    for candidate in candidates.into_iter().flatten().map(str::trim) {
+        let is_new = |other: &str| !other.eq_ignore_ascii_case(candidate);
+        if !candidate.is_empty() && is_new(name) && names.iter().all(|other| is_new(other)) {
+            names.push(candidate);
+        }
+    }
+    names
 }
 
 /// Collapses whitespace and cuts the text to [`MAX_OVERVIEW_CHARS`] on a word boundary.
@@ -295,7 +324,7 @@ mod embed_tests {
         let embed = embed(None);
         assert_eq!(embed["title"], "Release Title S2 [Ep 7]");
         assert_eq!(embed["fields"][0]["name"], "1080p");
-        for key in ["description", "image", "thumbnail"] {
+        for key in ["description", "image", "thumbnail", "footer"] {
             assert!(embed.get(key).is_none(), "{key}");
         }
     }
@@ -307,6 +336,32 @@ mod embed_tests {
         assert_eq!(embed["description"], "A short overview.");
         assert_eq!(embed["thumbnail"]["url"], "https://p/x.jpg");
         assert_eq!(embed["image"]["url"], "https://b/x.jpg");
+        // Only the release title differs from the show name here.
+        assert_eq!(embed["footer"]["text"], "Release Title S2");
+    }
+
+    #[test]
+    fn footer_lists_distinct_alternative_names() {
+        let embed = embed(Some(Show {
+            romaji_name: Some("Romaji Name".into()),
+            original_name: Some("オリジナル".into()),
+            ..show()
+        }));
+        assert_eq!(
+            embed["footer"]["text"],
+            "Release Title S2 · Romaji Name · オリジナル"
+        );
+    }
+
+    #[test]
+    fn footer_skips_names_equal_to_the_name_or_each_other() {
+        let embed = embed(Some(Show {
+            romaji_name: Some("show name".into()),
+            original_name: Some("Release title s2".into()),
+            ..show()
+        }));
+        // The romaji equals the name and the original equals the release title.
+        assert_eq!(embed["footer"]["text"], "Release Title S2");
     }
 
     #[test]
